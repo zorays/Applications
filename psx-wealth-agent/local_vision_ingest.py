@@ -301,12 +301,19 @@ def upload_prepared(out_dir: Path, symbols: list[str], mode: str, args):
     if mode == "none" or not symbols:
         return
     files = []
+    payload_folder = out_dir / "drive_payload"
     for symbol in symbols:
-        for suffix in (".csv", ".review.json"):
-            path = out_dir / (symbol + suffix)
-            if not path.exists():
-                raise ValueError("Prepared CSV/provenance metadata missing")
-            files.append(path)
+        # Keep OCR supplements separate from any genuine SYMBOL.csv exports.
+        for local_suffix, drive_suffix in (
+            (".csv", ".vision.csv"),
+            (".review.json", ".vision.review.json"),
+        ):
+            src = out_dir / (symbol + local_suffix)
+            if not src.exists():
+                raise ValueError("Prepared OCR CSV/provenance metadata missing")
+            dest = payload_folder / (symbol + drive_suffix)
+            save_atomic(dest, src.read_bytes())
+            files.append(dest)
     if mode == "sync":
         sync = Path(args.sync_folder)
         if not sync.is_dir():
