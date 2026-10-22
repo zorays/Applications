@@ -6,3 +6,10 @@
 .env.*
 *.csv
 *.xlsx
+
+# Never commit brokerage screenshots or personal OAuth credentials
+/.private/
+/screenshots/
+/vision_output/
+/.venv/
+/*.log
