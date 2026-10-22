@@ -145,7 +145,8 @@ def evaluate_position(radar: dict, settings: dict, today: str, max_bar_age_days:
 
 def assess_portfolios(report: dict, secret: str, data_dir: Path, today: str) -> tuple[list[dict], int]:
     profiles = parse_portfolios(secret)
-    allowed = {item["symbol"] for item in report.get("results", [])}
+    items_by_symbol = {item["symbol"]: item for item in report.get("results", [])}
+    allowed = set(items_by_symbol)
     by_symbol = {}
     outcomes = []
     for owner, holdings in profiles.items():
@@ -153,6 +154,11 @@ def assess_portfolios(report: dict, secret: str, data_dir: Path, today: str) -> 
             if symbol not in allowed:
                 outcomes.append({"owner": owner, "symbol": symbol, "verdict": "NO_FRESH_DATA",
                                  "notify": False, "reasons": ["Symbol not evaluated in public report"]})
+                continue
+            if "screenshot_derived_candles_need_independent_verification" in items_by_symbol[symbol].get("warnings", []):
+                outcomes.append({"owner": owner, "symbol": symbol,
+                                 "verdict": "OCR_RESEARCH_ONLY", "notify": False,
+                                 "reasons": ["Broker screenshot candles need independent exchange verification"]})
                 continue
             if symbol not in by_symbol:
                 try:
