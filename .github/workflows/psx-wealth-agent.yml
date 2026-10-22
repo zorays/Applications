@@ -57,21 +57,21 @@ jobs:
 
       - name: Import licensed Capital Stake EOD data when configured
         if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN != ''
-        run: python capitalstake_feed.py --output data
+        run: python capitalstake_feed.py --watchlist watchlist.txt --output data
       - name: Analyze Capital Stake market data
         if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN != ''
         run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
 
       - name: Import authorized Google Drive market CSVs when configured
         if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
-        run: python drive_ingest.py --output data
+        run: python drive_ingest.py --watchlist watchlist.txt --output data
       - name: Analyze Google Drive market CSVs
         if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
         run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
 
       - name: Analyze alternative licensed CSV provider when configured
         if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE != ''
-        run: python agent.py --source provider --output reports
+        run: python agent.py --source provider --watchlist watchlist.txt --output reports
 
       - name: Email technically qualified setups for manual review only
         if: github.event_name != 'push' && env.ALERT_EMAIL_TO != '' && env.ALERT_SMTP_USER != '' && env.ALERT_SMTP_APP_PASSWORD != ''
