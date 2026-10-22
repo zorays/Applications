@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+from io import StringIO
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -213,30 +215,72 @@ def render_report(items: list[dict], errors: dict[str, str], timestamp: str) -> 
     return "\n".join(out)
 
 
+def load_prices(symbol: str, source: str, data_dir: str) -> pd.DataFrame:
+    """Only use configured/approved market-data inputs.
+
+    provider expects a CSV response with date,open,high,low,close,volume.
+    Authentication remains in GitHub Actions secrets, never in the report.
+    """
+    if source == "csv":
+        path = Path(data_dir) / (symbol + ".csv")
+        if not path.is_file():
+            raise FileNotFoundError("Local input missing: " + str(path))
+        return pd.read_csv(path)
+    if source == "provider":
+        import requests
+        template = os.getenv("PSX_OHLCV_URL_TEMPLATE", "")
+        if not template or "{symbol}" not in template:
+            raise ValueError("Authorized CSV provider URL template missing")
+        url = template.replace("{symbol}", symbol)
+        if not url.startswith("https://"):
+            raise ValueError("Provider URL must use HTTPS")
+        headers = {}
+        token = os.getenv("PSX_OHLCV_TOKEN", "")
+        if token:
+            headers["Authorization"] = "Bearer " + token
+        response = requests.get(url, headers=headers, timeout=25)
+        response.raise_for_status()
+        if len(response.content) > 5_000_000:
+            raise ValueError("Provider CSV response exceeds 5 MB")
+        return pd.read_csv(StringIO(response.text))
+    if source == "psx":
+        # Explicit opt-in; can fail due to PSX access restrictions.
+        import psxdata
+        return psxdata.stocks(
+            symbol, start=(date.today() - timedelta(days=500)).isoformat(),
+            end=date.today().isoformat()
+        )
+    raise ValueError("Unsupported data source")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     parser.add_argument("--output", default="reports")
-    parser.add_argument("--calendar-days", type=int, default=500)
+    parser.add_argument("--source", choices=["auto", "csv", "provider", "psx"], default="auto")
+    parser.add_argument("--data-dir", default="data")
     args = parser.parse_args()
-    if not 100 <= args.calendar_days <= 2500:
-        parser.error("--calendar-days must be 100–2500")
-    # Import lazily so pure analytic tests do not need the live-data client installed.
-    import psxdata
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
     now = datetime.now(ZoneInfo("Asia/Karachi"))
-    start = (now.date() - timedelta(days=args.calendar_days)).isoformat()
-    end = now.date().isoformat()
+    source = args.source
+    if source == "auto":
+        source = "provider" if os.getenv("PSX_OHLCV_URL_TEMPLATE") else (
+            "csv" if Path(args.data_dir).is_dir() else "unconfigured"
+        )
     items: list[dict] = []
     errors: dict[str, str] = {}
     for symbol in dict.fromkeys(s.upper().strip() for s in args.symbols):
         try:
-            raw = psxdata.stocks(symbol, start=start, end=end)
+            if source == "unconfigured":
+                raise ValueError("No authorized feed configured; supply provider secret or --source csv")
+            raw = load_prices(symbol, source=source, data_dir=args.data_dir)
             items.append(analyze(symbol, raw, today=now.date()))
         except Exception as exc:
-            errors[symbol] = f"{type(exc).__name__}: {str(exc)[:180]}"
+            # Never include provider URLs or authentication values in public CI logs.
+            msg = str(exc) if source == "csv" or source == "unconfigured" else type(exc).__name__
+            errors[symbol] = f"{type(exc).__name__}: {msg[:120]}"
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     payload = {
