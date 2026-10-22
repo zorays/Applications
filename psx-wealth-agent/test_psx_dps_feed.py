@@ -1,9 +1,11 @@
 """Offline test of free monthly OHLCV series adapter."""
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from psx_dps_feed import get_bars, month_back, to_bar
+from psx_dps_feed import get_bars, month_back, to_bar, read_watchlist
 
 
 class ClientFake:
@@ -41,6 +43,34 @@ class AdapterTests(unittest.TestCase):
         bars = get_bars(ClientFake(), "SAZEW", now)
         self.assertGreaterEqual(len(bars), 80)
         self.assertEqual(bars["date"].iloc[-1].strftime("%Y-%m-%d"), "2026-10-22")
+
+
+    def test_watchlist_comments_duplicates_case(self):
+        with TemporaryDirectory() as root:
+            p = Path(root) / "watchlist.txt"
+            p.write_text("# Our candidates\nSAZEW\n luck # cement\nLUCK\n\nSYS\n")
+            self.assertEqual(read_watchlist(str(p)), ["SAZEW", "LUCK", "SYS"])
+
+    def test_watchlist_invalid_symbol_rejected(self):
+        with TemporaryDirectory() as root:
+            p = Path(root) / "watchlist.txt"
+            p.write_text("SAZEW\n../broker_credentials\n")
+            with self.assertRaisesRegex(ValueError, "Invalid PSX symbol"):
+                read_watchlist(str(p))
+
+    def test_watchlist_maximum_enforced(self):
+        with TemporaryDirectory() as root:
+            p = Path(root) / "watchlist.txt"
+            p.write_text("\n".join(f"X{n:02d}" for n in range(31)))
+            with self.assertRaisesRegex(ValueError, "more than 30"):
+                read_watchlist(str(p))
+
+    def test_watchlist_empty_rejected(self):
+        with TemporaryDirectory() as root:
+            p = Path(root) / "watchlist.txt"
+            p.write_text("# Comments only\n")
+            with self.assertRaisesRegex(ValueError, "no valid ticker"):
+                read_watchlist(str(p))
 
     def test_invalid_symbol_fails(self):
         now = datetime(2026, 10, 22, 18, tzinfo=ZoneInfo("Asia/Karachi"))
