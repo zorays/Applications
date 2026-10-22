@@ -24,7 +24,10 @@ from psx_dps_feed import read_watchlist
 
 MAX_ROWS = 1000
 MAX_META_BYTES = 100_000
-EXPECTED_SOURCE = "ollama_vision_from_broker_screenshots"
+ALLOWED_SOURCES = {
+    "ollama_vision_from_broker_screenshots",
+    "gemini_cloud_vision_from_broker_screenshots",
+}
 
 
 def validate_reviewed_pair(csv_data: bytes, json_data: bytes, symbol: str) -> pd.DataFrame:
@@ -33,7 +36,7 @@ def validate_reviewed_pair(csv_data: bytes, json_data: bytes, symbol: str) -> pd
     meta = json.loads(json_data)
     if (not isinstance(meta, dict) or
         meta.get("symbol") != symbol or
-        meta.get("source") != EXPECTED_SOURCE or
+        meta.get("source") not in ALLOWED_SOURCES or
         meta.get("reviewed") is not True or
         not meta.get("reviewed_at") or
         not isinstance(meta.get("image_hashes"), list) or
@@ -171,7 +174,7 @@ def import_all(session, folder_id: str, data_dir: Path, watch: set[str]) -> dict
             states[symbol] = {
                 "ocr_dates": sorted(prev_dates),
                 "conflicts": result["conflicts_with_existing"],
-                "source": EXPECTED_SOURCE,
+                "source": "approved_vision_screenshot_ocr",
                 "reviewed": True,
             }
             results.append(result)
