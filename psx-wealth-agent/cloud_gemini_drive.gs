@@ -159,7 +159,7 @@ function scanVisionInbox_() {
       if (!unchanged) replaceText_(root, filename, csv, 'text/csv');
       const approved = Boolean(unchanged && priorMeta.reviewed === true);
       const metadata = {
-        symbol:symbol, source:'ollama_vision_from_broker_screenshots',
+        symbol:symbol, source:'gemini_cloud_vision_from_broker_screenshots',
         extractor:'gemini_cloud_vision', csv_sha256:checksum,
         row_count:merged.length, reviewed:approved,
         reviewed_at: approved ? priorMeta.reviewed_at : null,
