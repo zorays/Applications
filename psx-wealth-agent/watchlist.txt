@@ -1,7 +1,7 @@
 # PSX Wealth Creation Agent
 # One PSX ticker per line. Add or remove lines whenever you like.
 # No holdings, quantities, average prices or account information here.
-# Limit: 30 symbols per daily run to keep free PSX traffic reasonable.
+# Limit: 36 symbols per daily run, five monthly history requests each.
 # Existing equities and closely followed stocks
 
 CEPB
@@ -32,3 +32,13 @@ PPL
 PSO
 SPEL
 TPLT
+
+# Imported from EClear Trade Cast 1st and 2nd profiles (Oct 22, 2026)
+LOADS
+OBOY
+WASL
+WAVES
+WAVESAPP
+THCCL
+ANL
+LOTCHEM
