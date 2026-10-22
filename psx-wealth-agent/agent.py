@@ -174,7 +174,7 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
         "full_verdict_score": None,
         "buy_approved": False,
         "decision": "RESEARCH_ONLY_NO_BUY_APPROVAL",
-        "data_source": "unofficial psxdata library accessing PSX public pages",
+        "data_source": "configured OHLCV feed (see run settings)",
     }
 
 
@@ -259,7 +259,15 @@ def main() -> int:
     parser.add_argument("--output", default="reports")
     parser.add_argument("--source", choices=["auto", "csv", "provider", "psx"], default="auto")
     parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--symbols-from-data-dir", action="store_true")
     args = parser.parse_args()
+    if args.symbols_from_data_dir:
+        data_path = Path(args.data_dir)
+        detected = sorted(path.stem for path in data_path.glob("*.csv")
+                          if path.stem.isalnum() and path.stem == path.stem.upper())
+        if not detected:
+            parser.error("No validated OHLCV CSV symbol files available")
+        args.symbols = detected
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
