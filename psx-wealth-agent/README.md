@@ -4,7 +4,7 @@ A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It 
 
 ## Data source
 
-Supports **private Google Drive CSV uploads**, manually provided CSV data, a licensed HTTPS CSV provider, or an **explicit opt-in** [psxdata](https://github.com/psxdata/psxdata) mode (an unofficial, alpha-stage Python client that retrieves PSX public-page history). PSX does not provide this application an officially supported production API. Respect PSX access/redistribution terms, request limits and licensing requirements. An official licensed feed is preferable before production or commercial deployment. The collector may fail due to remote-site changes or GitHub-hosted runner restrictions.
+Supports **licensed Capital Stake REST API history directly**, private Google Drive CSV uploads, manually provided CSV data, an alternate licensed HTTPS CSV provider, or an **explicit opt-in** [psxdata](https://github.com/psxdata/psxdata) mode (an unofficial, alpha-stage Python client that retrieves PSX public-page history). PSX does not provide this application an officially supported production API. Respect PSX access/redistribution terms, request limits and licensing requirements. An official licensed feed is preferable before production or commercial deployment. The collector may fail due to remote-site changes or GitHub-hosted runner restrictions.
 
 ## Initial watchlist
 
@@ -37,11 +37,39 @@ The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays aroun
 
 ### Authorized provider configuration
 
-In **Settings → Secrets and variables → Actions**, create a repository secret named `PSX_OHLCV_URL_TEMPLATE`, containing an authorized HTTPS CSV endpoint template, e.g. `https://your-licensed-provider.example/ohlcv/{symbol}.csv`. Optionally create `PSX_OHLCV_TOKEN` for bearer authentication. The endpoint must return CSV columns `date,open,high,low,close,volume` with at least 80 validated daily bars. Replace the example URL with an actual provider you have permission to use; the project **does not include** a provider subscription or access key. Do not put secrets in source control.
+For an **alternate** licensed CSV provider, in **Settings → Secrets and variables → Actions**, create a repository secret named `PSX_OHLCV_URL_TEMPLATE`, containing an authorized HTTPS CSV endpoint template, e.g. `https://your-licensed-provider.example/ohlcv/{symbol}.csv`. Optionally create `PSX_OHLCV_TOKEN` for bearer authentication. The endpoint must return CSV columns `date,open,high,low,close,volume` with at least 80 validated daily bars. Replace the example URL with an actual provider you have permission to use; the project **does not include** a provider subscription or access key. Do not put secrets in source control.
 
 Until the secret exists, successful CI verifies **only code/tests**, not live PSX prices. Live reports become available after the authorized endpoint is configured and a run succeeds.
 
 Navigate to **Actions → PSX Wealth Research → Run workflow** to test manually. Once a provider is configured, download the `psx-wealth-report` artifact from a successful run to read verdicts. Without a feed, the workflow simply reports a configuration warning.
+
+## Preferred: Capital Stake documented PSX API → GitHub
+
+The Capital Analytics website is operated by the Capital Stake group, which publishes its **separately authenticated developer API** documentation:
+
+- [Capital Stake REST introduction](https://www.capitalstake.com/docs/rest/intro)
+- [EOD unadjusted OHLCV](https://www.capitalstake.com/docs/rest/api/stocks/market-quotes-and-trading/charts-ohlc/end-of-day-stocks-unadjusted)
+- [EOD adjusted OHLCV](https://www.capitalstake.com/docs/rest/api/stocks/market-quotes-and-trading/charts-ohlc/end-of-day-stocks-adjusted)
+- [Daily technicals](https://www.capitalstake.com/docs/rest/api/stocks/performance-and-analytics/technical-indicators/technicals-by-symbol)
+
+**A browser access link or logged-in Capital Analytics portal token is not a developer API entitlement.** Request a separate developer Bearer token and confirm permitted access, historical depth, rates, fees and scheduled research usage with `data.solutions@capitalstake.com`. This repository neither extracts nor reuses an EClear/browser login token.
+
+**Activation:** In GitHub `zorays/Applications → Settings → Secrets and variables → Actions`, add a secret called `CAPITALSTAKE_API_TOKEN` with a dedicated authorized Capital Stake API token. Do not commit it or send it in chat.
+
+The GitHub workflow then prioritizes `capitalstake_feed.py`, which calls only official documented HTTPS endpoint `https://csapis.com/3.0/market/eod` with the Bearer token in the **Authorization header**. It requests historical `time,open,high,low,close,volume` data for the public research watchlist, converts Unix timestamps to Pakistan session dates and writes temporary OHLCV CSV files for the existing indicator engine. The default is **unadjusted** history appropriate for real-price technical entry zones; an optional `--adjusted` flag is available for return/backtest contexts, but adjusted values are not executable order prices. It performs no trading.
+
+No Google Drive folder, desktop OMS, local Windows process or scheduled report export is necessary when this API access is supplied. Drive remains a fallback if the API subscription is unavailable. GitHub runs weekdays at about 17:45 PKT, and the only emailed outputs are tentative **technical review candidates** once the existing SMTP secrets have also been set.
+
+Run the adapter locally once authenticated:
+
+```bash
+cd psx-wealth-agent
+# Set CAPITALSTAKE_API_TOKEN in local environment, do not paste in code.
+python capitalstake_feed.py --symbols SAZEW LUCK SYS --output data
+python agent.py --source csv --symbols-from-data-dir --data-dir data --output reports
+```
+
+The current public repo is designed for **market-only** tickers. Do not upload private household position information. API imports are not considered proven until an authenticated GitHub Action has fetched and validated enough real candles.
 
 ## EClear OMS → Google Drive → GitHub → email integration
 
@@ -104,8 +132,8 @@ Do not treat RSI, EMA and Supertrend as independent evidence: they are correlate
 
 ## Next iterations
 
-1. Verify access and fidelity of daily bars on GitHub-hosted runners.
-2. Obtain permission for scheduled data access; if required, replace unofficial client with a licensed PSX feed.
+1. Obtain authorized Capital Stake REST API entitlement; verify live data access and fidelity of daily bars from GitHub-hosted runners.
+2. If API subscription is not available, verify Capital Analytics web UI allows permitted scheduled per-symbol CSV exports into the Drive inbox.
 3. Ingest fundamental disclosures and dated Shariah screening with evidence links.
 4. Add adjusted corporate-action returns, true bid–ask and sector concentration.
 5. Backtest with survivorship bias controls, trading costs, realistic fill assumptions and walk-forward testing.
