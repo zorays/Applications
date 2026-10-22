@@ -9,6 +9,7 @@ history_by_month() includes complete high/low. Supertrend requires those.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from datetime import datetime
 from pathlib import Path
@@ -122,7 +123,8 @@ def main():
     now = datetime.now(PKT)
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=True)
-    errors = []
+    errors = {}
+    succeeded = 0
     print(f"Research watchlist: {len(symbols)} PSX tickers, "
           f"up to {len(symbols) * args.months} historical month requests")
     with Client(min_interval=2.0, daily_budget=200, timeout=20.0, retries=1) as client:
@@ -132,16 +134,19 @@ def main():
                 # No private holdings; temporary market-only data.
                 (out / f"{symbol}.csv").write_text(
                     bars.to_csv(index=False), encoding="utf-8")
+                succeeded += 1
                 print(f"{symbol}: validated {len(bars)} daily OHLCV bars, "
                       f"latest {bars['date'].iloc[-1].date()}")
             except Exception as exc:
                 # No proxy, bypass or aggressive retry on transport errors.
                 print(f"{symbol}: unavailable ({type(exc).__name__})")
-                errors.append(symbol)
+                errors[symbol] = type(exc).__name__
+    # Keep the complete watchlist's missing coverage visible in the report.
+    (out / "fetch_errors.json").write_text(json.dumps(errors, indent=2), encoding="utf-8")
     if errors:
-        print("Data incomplete: " + ", ".join(errors))
-        return 1
-    return 0
+        print("Unavailable symbols (not analyzed): " + ", ".join(errors))
+    print(f"Coverage: {succeeded}/{len(symbols)} symbols")
+    return 0 if succeeded else 1
 
 
 if __name__ == "__main__":
