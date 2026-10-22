@@ -22,6 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      CAPITALSTAKE_API_TOKEN: ${{ secrets.CAPITALSTAKE_API_TOKEN }}
       GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
       GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
       PSX_OHLCV_URL_TEMPLATE: ${{ secrets.PSX_OHLCV_URL_TEMPLATE }}
@@ -43,24 +44,35 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Validate analysis and alert rules offline
         run: python -m unittest discover -p 'test_*.py' -v
-      - name: Import approved market OHLCV CSVs from Google Drive
-        if: env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
+
+      - name: Import Capital Stake official EOD data (preferred)
+        if: env.CAPITALSTAKE_API_TOKEN != ''
+        run: python capitalstake_feed.py --output data
+      - name: Analyze Capital Stake historical EOD
+        if: env.CAPITALSTAKE_API_TOKEN != ''
+        run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
+
+      - name: Import approved OHLCV CSVs from Google Drive (fallback)
+        if: env.CAPITALSTAKE_API_TOKEN == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
         run: python drive_ingest.py --output data
       - name: Analyze Google Drive prices
-        if: env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
+        if: env.CAPITALSTAKE_API_TOKEN == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
         run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
-      - name: Analyze licensed provider (fallback)
-        if: (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE != ''
+
+      - name: Analyze alternate licensed provider
+        if: env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE != ''
         run: python agent.py --source provider --output reports
       - name: Feed configuration pending
-        if: (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
-        run: echo "::warning::No authorized Drive or licensed price-data feed configured; signal evaluation and email skipped."
-      - name: Email newly qualified research candidates
-        if: (env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != '' || env.PSX_OHLCV_URL_TEMPLATE != '') && env.ALERT_EMAIL_TO != '' && env.ALERT_SMTP_USER != '' && env.ALERT_SMTP_APP_PASSWORD != ''
+        if: env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
+        run: echo "::warning::No authorized API or Drive OHLCV feed configured; live data and alerts remain disabled."
+
+      - name: Email qualified technical-review candidates
+        if: github.event_name != 'push' && (env.CAPITALSTAKE_API_TOKEN != '' || (env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != '') || env.PSX_OHLCV_URL_TEMPLATE != '') && env.ALERT_EMAIL_TO != '' && env.ALERT_SMTP_USER != '' && env.ALERT_SMTP_APP_PASSWORD != ''
         run: python alerts.py --report reports/verdict.json --send
       - name: Email configuration pending
-        if: (env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != '' || env.PSX_OHLCV_URL_TEMPLATE != '') && (env.ALERT_EMAIL_TO == '' || env.ALERT_SMTP_USER == '' || env.ALERT_SMTP_APP_PASSWORD == '')
-        run: echo "::notice::Candidate emails disabled until SMTP secrets are configured."
+        if: github.event_name != 'push' && (env.CAPITALSTAKE_API_TOKEN != '' || (env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != '') || env.PSX_OHLCV_URL_TEMPLATE != '') && (env.ALERT_EMAIL_TO == '' || env.ALERT_SMTP_USER == '' || env.ALERT_SMTP_APP_PASSWORD == '')
+        run: echo "::notice::Technical-review email disabled until SMTP secrets are configured."
+
       - name: Upload market-only research reports
         if: always()
         uses: actions/upload-artifact@v4
