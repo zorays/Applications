@@ -66,9 +66,9 @@ def parse_price(value, integer=False):
     return int(number) if integer else number
 
 
-def validate_image_rows(records, today=None) -> list[dict]:
+def validate_image_rows(records, today=None, max_records=100) -> list[dict]:
     """Allow partial screenshot snippets; NEVER pad missing candles."""
-    if not isinstance(records, list) or not (1 <= len(records) <= 100):
+    if not isinstance(records, list) or not (1 <= len(records) <= max_records):
         raise ValueError("No visible candlestick rows or implausibly many rows")
     today = today or datetime.now(PKT).date()
     clean = []
@@ -244,8 +244,9 @@ def approve(out_dir: Path, symbol: str, watchlist: Path):
     if metadata["csv_sha256"] != digest(path.read_bytes()):
         raise ValueError("CSV was modified; rerun extraction and inspect before approval")
     # Check again for invalid rows; manual confirmation is still required.
-    rows = list(csv.DictReader(path.open(encoding="utf-8", newline="")))
-    validate_image_rows(rows)
+    with path.open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    validate_image_rows(rows, max_records=1000)
     metadata["reviewed"] = True
     metadata["reviewed_at"] = datetime.now(PKT).isoformat()
     save_atomic(metadata_path, json.dumps(metadata, indent=2).encode())
