@@ -4,7 +4,7 @@ A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It 
 
 ## Data source
 
-**Default: tested free PSX public-history feed via [psx-dps](https://github.com/umairsandhu/psx-dps)**, pinned to a known commit. A GitHub cloud test on October 22, 2026 downloaded **117 valid SAZEW OHLCV bars** and calculated SMA, RSI, EMAs and Supertrend successfully ([run](https://github.com/zorays/Applications/actions/runs/39768934878)).
+**Default: tested free PSX public-history feed via [psx-dps](https://github.com/umairsandhu/psx-dps)**, pinned to a known commit. GitHub cloud tests on October 22, 2026 downloaded **117 valid daily OHLCV bars each for all seven monitored stocks** and calculated RSI, EMA and Supertrend successfully ([seven-stock run](https://github.com/zorays/Applications/actions/runs/39769549232)).
 
 The psx-dps EOD route omits high and low, so `psx_dps_feed.py` uses the public monthly historical table to obtain complete OHLCV. The earlier `psxdata` package failed with `PSXAuthError` from GitHub and is no longer installed by default. Free PSX data is unofficial and may change; comply with PSX market-data access and redistribution requirements.
 
@@ -39,7 +39,7 @@ Data fetch or validation failure produces an explicit error and a nonzero proces
 
 The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays at roughly **17:45 PKT (12:45 UTC)**; GitHub schedule delivery may be delayed. Code pushes only run offline tests. Scheduled/manual runs default to the free psx-dps client when no licensed feed/Drive secret is configured, fetch roughly six months of full daily OHLCV for seven stocks and upload a market-only report artifact retained for 14 days.
 
-Only **SAZEW's** full history and indicators have been tested live so far; the first seven-ticker scheduled/manual run must pass before we call all coverage operational. No trade execution. SMTP research alerts remain disabled until email credentials are configured.
+All **seven** initial watchlist symbols passed a live GitHub-hosted end-to-end run on October 22, 2026: each returned 117 valid candles and a technical assessment. Scheduled execution is configured; its next actual cron execution and email delivery remain separate verification steps. No trade execution. SMTP research alerts remain disabled until email credentials are configured.
 
 Use **Actions → PSX Wealth Research → Run workflow** to test manually. A code-push success means the offline tests passed, not necessarily that live data was retrieved.
 
@@ -140,7 +140,7 @@ Do not treat RSI, EMA and Supertrend as independent evidence: they are correlate
 
 ## Next iterations
 
-1. Verify a complete seven-ticker live scheduled/manual run and compare its OHLCV against EClear OMS.
+1. Cross-check selected free-feed OHLCV values against EClear OMS and verify the next scheduled cron run; the seven-ticker end-to-end test has already passed.
 2. Expand the watchlist to construction and plastic-manufacturing candidates while respecting public-data request budgets.
 3. Add audited financial data, valuation and dated Shariah screening so a genuine 100-point verdict becomes possible.
 4. Handle corporate-action-adjusted price histories for returns and executable unadjusted prices for entries.
