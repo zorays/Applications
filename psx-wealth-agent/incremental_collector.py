@@ -64,7 +64,7 @@ def read_existing(directory: Path, symbol: str, today: date):
 
 def append_session(existing: pd.DataFrame, bar: dict) -> pd.DataFrame:
     combined = pd.concat((existing, pd.DataFrame([bar])), ignore_index=True)
-    combined = combined.sort_values("date").drop_duplicates("date", keep="last")
+    # normalize converts mixed CSV string / pandas Timestamp dates before sorting.
     return normalize(combined).tail(MAX_ROWS).reset_index(drop=True)
 
 
@@ -95,6 +95,7 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
     state = load_state(directory)
     retry_after = state.get("retry_after") or {}
     errors: dict[str, str] = {}
+    data_warnings: dict[str, str] = {}
     bulk = {}
     cooling = False
     last_bulk_success = False
@@ -124,7 +125,7 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
             try:
                 bars = append_session(bars, bulk[symbol])
             except (ValueError, TypeError):
-                errors[symbol] = "Daily candle failed validation; retaining prior history"
+                data_warnings[symbol] = "Daily candle failed validation; retaining prior history"
         cached[symbol] = bars
         atomic_text(directory / (symbol + ".csv"), bars.to_csv(index=False))
 
@@ -187,6 +188,7 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
         "historical_bootstrap_attempts": tried,
         "historical_bootstrapped": bootstrapped,
         "deferred": deferred,
+        "data_warnings": data_warnings,
         "cooldown_respected": cooling,
         "latest_dates": {s: f["date"].iloc[-1].date().isoformat()
                          for s, f in complete.items()},
