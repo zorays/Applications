@@ -70,6 +70,8 @@ def validate_reviewed_pair(csv_data: bytes, json_data: bytes, symbol: str) -> pd
 
 def merge_trusted_and_ocr(existing: pd.DataFrame | None, supplemental: pd.DataFrame):
     """Trusted PSX series wins by date; do not invent missing candles."""
+    supplemental = supplemental.copy()
+    supplemental["date"] = pd.to_datetime(supplemental["date"], errors="raise")
     if existing is not None and not existing.empty:
         trusted = existing.copy()
         trusted["date"] = pd.to_datetime(trusted["date"])
