@@ -4,11 +4,15 @@ A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It 
 
 ## Data source
 
-Supports **licensed Capital Stake REST API history directly**, private Google Drive CSV uploads, manually provided CSV data, an alternate licensed HTTPS CSV provider, or an **explicit opt-in** [psxdata](https://github.com/psxdata/psxdata) mode (an unofficial, alpha-stage Python client that retrieves PSX public-page history). PSX does not provide this application an officially supported production API. Respect PSX access/redistribution terms, request limits and licensing requirements. An official licensed feed is preferable before production or commercial deployment. The collector may fail due to remote-site changes or GitHub-hosted runner restrictions.
+**Default: tested free PSX public-history feed via [psx-dps](https://github.com/umairsandhu/psx-dps)**, pinned to a known commit. A GitHub cloud test on October 22, 2026 downloaded **117 valid SAZEW OHLCV bars** and calculated SMA, RSI, EMAs and Supertrend successfully ([run](https://github.com/zorays/Applications/actions/runs/39768934878)).
+
+The psx-dps EOD route omits high and low, so `psx_dps_feed.py` uses the public monthly historical table to obtain complete OHLCV. The earlier `psxdata` package failed with `PSXAuthError` from GitHub and is no longer installed by default. Free PSX data is unofficial and may change; comply with PSX market-data access and redistribution requirements.
+
+Licensed Capital Stake API, Google Drive CSV and an authorized HTTPS CSV provider remain optional alternatives. No trading credentials or personal holdings are required.
 
 ## Initial watchlist
 
-SAZEW, LUCK, SYS, OGDC, FFC, MEBL, ENGROH, MARI, MLCF, FCCL, DGKC, ECOP, SPEL.
+Scheduled free-source rollout: **SAZEW, LUCK, SYS, OGDC, FFC, MEBL and ENGROH**. Future candidates include MARI, MLCF, FCCL, DGKC, ECOP and SPEL.
 
 No account information, brokerage login, personal holdings, cost bases or family portfolio information are stored here. This is a **public repository**; do not add any of those details.
 
@@ -33,17 +37,21 @@ Data fetch or validation failure produces an explicit error and a nonzero proces
 
 ## Scheduled workflow
 
-The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays around **17:45 Pakistan time (12:45 UTC)**, on relevant code pushes, and on manual `workflow_dispatch`. GitHub schedules may be delayed or skipped. It runs offline tests first. **Live data retrieval is skipped until a permitted provider is configured**, following a confirmed HTTP 403 when the initial cloud runner tried to access official PSX historical pages. Once configured it uploads reports retained for 14 days. It does **not** push fetched prices or execute broker orders.
+The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays at roughly **17:45 PKT (12:45 UTC)**; GitHub schedule delivery may be delayed. Code pushes only run offline tests. Scheduled/manual runs default to the free psx-dps client when no licensed feed/Drive secret is configured, fetch roughly six months of full daily OHLCV for seven stocks and upload a market-only report artifact retained for 14 days.
+
+Only **SAZEW's** full history and indicators have been tested live so far; the first seven-ticker scheduled/manual run must pass before we call all coverage operational. No trade execution. SMTP research alerts remain disabled until email credentials are configured.
+
+Use **Actions → PSX Wealth Research → Run workflow** to test manually. A code-push success means the offline tests passed, not necessarily that live data was retrieved.
 
 ### Authorized provider configuration
 
 For an **alternate** licensed CSV provider, in **Settings → Secrets and variables → Actions**, create a repository secret named `PSX_OHLCV_URL_TEMPLATE`, containing an authorized HTTPS CSV endpoint template, e.g. `https://your-licensed-provider.example/ohlcv/{symbol}.csv`. Optionally create `PSX_OHLCV_TOKEN` for bearer authentication. The endpoint must return CSV columns `date,open,high,low,close,volume` with at least 80 validated daily bars. Replace the example URL with an actual provider you have permission to use; the project **does not include** a provider subscription or access key. Do not put secrets in source control.
 
-Until the secret exists, successful CI verifies **only code/tests**, not live PSX prices. Live reports become available after the authorized endpoint is configured and a run succeeds.
+No API/Drive secret is required for the tested **free** data route. Alternative licensed feeds require the corresponding GitHub secrets.
 
-Navigate to **Actions → PSX Wealth Research → Run workflow** to test manually. Once a provider is configured, download the `psx-wealth-report` artifact from a successful run to read verdicts. Without a feed, the workflow simply reports a configuration warning.
+On a successful scheduled or manually dispatched run, download the `psx-wealth-report` artifact to read the technical screening.
 
-## Preferred: Capital Stake documented PSX API → GitHub
+## Optional: Capital Stake documented PSX API → GitHub
 
 The Capital Analytics website is operated by the Capital Stake group, which publishes its **separately authenticated developer API** documentation:
 
@@ -58,7 +66,7 @@ The Capital Analytics website is operated by the Capital Stake group, which publ
 
 The GitHub workflow then prioritizes `capitalstake_feed.py`, which calls only official documented HTTPS endpoint `https://csapis.com/3.0/market/eod` with the Bearer token in the **Authorization header**. It requests historical `time,open,high,low,close,volume` data for the public research watchlist, converts Unix timestamps to Pakistan session dates and writes temporary OHLCV CSV files for the existing indicator engine. The default is **unadjusted** history appropriate for real-price technical entry zones; an optional `--adjusted` flag is available for return/backtest contexts, but adjusted values are not executable order prices. It performs no trading.
 
-No Google Drive folder, desktop OMS, local Windows process or scheduled report export is necessary when this API access is supplied. Drive remains a fallback if the API subscription is unavailable. GitHub runs weekdays at about 17:45 PKT, and the only emailed outputs are tentative **technical review candidates** once the existing SMTP secrets have also been set.
+No Google Drive folder, desktop OMS, or local Windows process is necessary for the tested free feed; the licensed API also works without them. Drive remains a fallback if the API subscription is unavailable. GitHub runs weekdays at about 17:45 PKT, and the only emailed outputs are tentative **technical review candidates** once the existing SMTP secrets have also been set.
 
 Run the adapter locally once authenticated:
 
@@ -113,7 +121,7 @@ A technical signal cannot satisfy the remaining 85 points of the published 100-p
 
 The workflow runs once after the market on each weekday (normally 17:45 PKT) and can be started manually under **Actions → PSX Wealth Research → Run workflow**. GitHub scheduling may be delayed, and repeated manual runs with the same day's qualifying data can produce duplicate alert emails until persistent deduplication is implemented. The daily research report is uploaded as an Actions artifact, **not** as a publicly committed file.
 
-If any required secrets are absent, the workflow runs **tests only** and emits a configuration notice; that success does **not** mean market retrieval and email delivery are active.
+Without SMTP secrets the agent still generates reports using its free feed but does not send emails. Without a successful feed it never invents verdicts.
 
 ## What is implemented
 
@@ -132,9 +140,9 @@ Do not treat RSI, EMA and Supertrend as independent evidence: they are correlate
 
 ## Next iterations
 
-1. Obtain authorized Capital Stake REST API entitlement; verify live data access and fidelity of daily bars from GitHub-hosted runners.
-2. If API subscription is not available, verify Capital Analytics web UI allows permitted scheduled per-symbol CSV exports into the Drive inbox.
-3. Ingest fundamental disclosures and dated Shariah screening with evidence links.
-4. Add adjusted corporate-action returns, true bid–ask and sector concentration.
-5. Backtest with survivorship bias controls, trading costs, realistic fill assumptions and walk-forward testing.
-6. Integrate private household-level portfolio exposure **only in protected infrastructure**.
+1. Verify a complete seven-ticker live scheduled/manual run and compare its OHLCV against EClear OMS.
+2. Expand the watchlist to construction and plastic-manufacturing candidates while respecting public-data request budgets.
+3. Add audited financial data, valuation and dated Shariah screening so a genuine 100-point verdict becomes possible.
+4. Handle corporate-action-adjusted price histories for returns and executable unadjusted prices for entries.
+5. Backtest with turnover, fees, missed fills and realistic liquidity.
+6. Add deduplicated SMTP research alerts and securely stored private household portfolio risk controls.
