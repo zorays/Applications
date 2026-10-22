@@ -1,0 +1,34 @@
+# PSX Wealth Creation Agent
+# One PSX ticker per line. Add or remove lines whenever you like.
+# No holdings, quantities, average prices or account information here.
+# Limit: 30 symbols per daily run to keep free PSX traffic reasonable.
+# Existing equities and closely followed stocks
+
+CEPB
+ENGROH
+FFC
+LUCK
+MEBL
+NETSOL
+OGDC
+SAZEW
+SIEM
+SLM
+SRR
+SYS
+TREET
+TRG
+
+# Construction, Islamic banking, circular packaging and other ideas
+
+BIPL
+DGKC
+DSIL
+ECOP
+FCCL
+MARI
+MLCF
+PPL
+PSO
+SPEL
+TPLT
