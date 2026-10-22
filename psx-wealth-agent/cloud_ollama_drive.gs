@@ -261,7 +261,7 @@ function callOllama_(bytes, mime, symbol) {
   if (typeof value !== 'string' || value.length > 120000) throw new Error('Invalid Ollama text content');
   value = value.trim();
   if (value.startsWith('```')) {
-    value = value.replace(/^```(?:json)?\\s*/i,'').replace(/\\s*```$/,'').trim();
+    value = value.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
   }
   const parsed = JSON.parse(value);
   if (!parsed || typeof parsed !== 'object' ||
