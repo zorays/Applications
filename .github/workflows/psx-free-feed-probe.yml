@@ -1,0 +1,38 @@
+name: PSX Free Feed Probe
+
+on:
+  push:
+    paths:
+      - "psx-wealth-agent/free_feed_probe.py"
+      - ".github/workflows/psx-free-feed-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  free-source-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: psx-wealth-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install two open-source PSX clients
+        run: |
+          python -m pip install "psxdata==0.1.0a1" pandas
+          python -m pip install "git+https://github.com/umairsandhu/psx-dps@58944679119cb65c076cbafe96b5a0a1f516969d"
+      - name: Test ONE ticker from each source without credentials
+        run: python free_feed_probe.py
+      - name: Save minimal compatibility results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-psx-data-diagnostic
+          path: psx-wealth-agent/reports/free-feed-probe.json
+          if-no-files-found: warn
+          retention-days: 7
