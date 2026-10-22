@@ -4,7 +4,7 @@ A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It 
 
 ## Data source
 
-Uses [psxdata](https://github.com/psxdata/psxdata), an **unofficial, alpha-stage** Python client that retrieves PSX public-page history. PSX does not provide this application an officially supported production API. Respect PSX access/redistribution terms, request limits and licensing requirements. An official licensed feed is preferable before production or commercial deployment. The collector may fail due to remote-site changes or GitHub-hosted runner restrictions.
+Supports manually provided CSV data, a licensed HTTPS CSV provider, or an **explicit opt-in** [psxdata](https://github.com/psxdata/psxdata) mode (an unofficial, alpha-stage Python client that retrieves PSX public-page history). PSX does not provide this application an officially supported production API. Respect PSX access/redistribution terms, request limits and licensing requirements. An official licensed feed is preferable before production or commercial deployment. The collector may fail due to remote-site changes or GitHub-hosted runner restrictions.
 
 ## Initial watchlist
 
@@ -20,7 +20,8 @@ Requires Python 3.11+.
 cd psx-wealth-agent
 python -m pip install -r requirements.txt
 python -m unittest -v test_agent
-python agent.py --symbols SAZEW LUCK SYS --output reports
+# Put authorized CSV files such as SAZEW.csv, LUCK.csv and SYS.csv in a local data folder.
+python agent.py --source csv --data-dir data --symbols SAZEW LUCK SYS --output reports
 ```
 
 Outputs:
@@ -32,9 +33,15 @@ Data fetch or validation failure produces an explicit error and a nonzero proces
 
 ## Scheduled workflow
 
-The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs on weekdays around **17:45 Pakistan time (12:45 UTC)** and supports manual `workflow_dispatch`. Scheduled actions may be delayed or skipped by GitHub. It runs offline tests first, then retrieves OHLCV and uploads reports as a workflow artifact retained for 14 days. It does **not** push fetched price history back to the repository or execute broker orders.
+The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays around **17:45 Pakistan time (12:45 UTC)**, on relevant code pushes, and on manual `workflow_dispatch`. GitHub schedules may be delayed or skipped. It runs offline tests first. **Live data retrieval is skipped until a permitted provider is configured**, following a confirmed HTTP 403 when the initial cloud runner tried to access official PSX historical pages. Once configured it uploads reports retained for 14 days. It does **not** push fetched prices or execute broker orders.
 
-Navigate to **Actions → PSX Wealth Research → Run workflow** to test manually. Download the `psx-wealth-report` artifact from the run to read verdicts.
+### Authorized provider configuration
+
+In **Settings → Secrets and variables → Actions**, create a repository secret named `PSX_OHLCV_URL_TEMPLATE`, containing an authorized HTTPS CSV endpoint template, e.g. `https://your-licensed-provider.example/ohlcv/{symbol}.csv`. Optionally create `PSX_OHLCV_TOKEN` for bearer authentication. The endpoint must return CSV columns `date,open,high,low,close,volume` with at least 80 validated daily bars. Replace the example URL with an actual provider you have permission to use; the project **does not include** a provider subscription or access key. Do not put secrets in source control.
+
+Until the secret exists, successful CI verifies **only code/tests**, not live PSX prices. Live reports become available after the authorized endpoint is configured and a run succeeds.
+
+Navigate to **Actions → PSX Wealth Research → Run workflow** to test manually. Once a provider is configured, download the `psx-wealth-report` artifact from a successful run to read verdicts. Without a feed, the workflow simply reports a configuration warning.
 
 ## What is implemented
 
