@@ -2,6 +2,14 @@
 
 A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It implements the technical part of the October 2026 **Contrarian–Momentum Framework**; it deliberately does **not** calculate or display an invented full 100-point rating or approve purchases.
 
+## Local Ollama vision screenshots → Drive → GitHub
+
+**NEW:** A Windows companion can transcribe EClear OHLC-history screenshots into symbol CSV files via a **locally running Ollama vision model** and upload them to the existing Google Drive inbox using Desktop OAuth or Google Drive for Desktop sync. The normal GitHub runner supplements missing history only after the screenshot CSV has been manually checked and explicitly approved, retaining market-sourced candles when values conflict. Screenshot-derived data is labelled and automatically excluded from buy/sell email triggers pending independent verification.
+
+**[Windows walkthrough, installation and commands](WINDOWS_OLLAMA_SETUP.md)**.
+
+The script uploads only `SYMBOL.vision.csv` and `SYMBOL.vision.review.json` to prevent replacing other price exports. It does not upload screenshots or open broker sessions. GitHub's authenticated Drive reader requires `GDRIVE_FOLDER_ID` and `GDRIVE_SERVICE_ACCOUNT_JSON` secrets; local Google OAuth is **separate** from that reader account.
+
 ## Data source
 
 **Default: tested free PSX public-history feed via [psx-dps](https://github.com/umairsandhu/psx-dps)**, pinned to a known commit. GitHub cloud tests on October 22, 2026 downloaded **117 valid daily OHLCV bars each for all seven monitored stocks** and calculated RSI, EMA and Supertrend successfully ([seven-stock run](https://github.com/zorays/Applications/actions/runs/39769549232)).
