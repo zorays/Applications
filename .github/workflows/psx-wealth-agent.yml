@@ -7,7 +7,7 @@ on:
       - ".github/workflows/psx-wealth-agent.yml"
   workflow_dispatch:
   schedule:
-    # 12:45 UTC is 17:45 PKT; GitHub schedules can be delayed.
+    # 12:45 UTC = 17:45 PKT; scheduled runs can be delayed by GitHub.
     - cron: "45 12 * * 1-5"
 
 permissions:
@@ -22,13 +22,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
+      GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+      GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
       PSX_OHLCV_URL_TEMPLATE: ${{ secrets.PSX_OHLCV_URL_TEMPLATE }}
       PSX_OHLCV_TOKEN: ${{ secrets.PSX_OHLCV_TOKEN }}
+      ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+      ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+      ALERT_SMTP_APP_PASSWORD: ${{ secrets.ALERT_SMTP_APP_PASSWORD }}
     defaults:
       run:
         working-directory: psx-wealth-agent
     steps:
-      - name: Check out repository
+      - name: Check out research repository
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,15 +41,27 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
-      - name: Run offline tests
-        run: python -m unittest -v test_agent
-      - name: Research PSX watchlist via authorized provider
-        if: env.PSX_OHLCV_URL_TEMPLATE != ''
+      - name: Validate analysis and alert rules offline
+        run: python -m unittest discover -p 'test_*.py' -v
+      - name: Import approved market OHLCV CSVs from Google Drive
+        if: env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
+        run: python drive_ingest.py --output data
+      - name: Analyze Google Drive prices
+        if: env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
+        run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
+      - name: Analyze licensed provider (fallback)
+        if: (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE != ''
         run: python agent.py --source provider --output reports
-      - name: Show pending feed configuration
-        if: env.PSX_OHLCV_URL_TEMPLATE == ''
-        run: echo "::warning::PSX historical endpoint returned HTTP 403 from GitHub runner. Configure approved PSX_OHLCV_URL_TEMPLATE secret; live retrieval is skipped until then."
-      - name: Upload research report (no private holdings)
+      - name: Feed configuration pending
+        if: (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
+        run: echo "::warning::No authorized Drive or licensed price-data feed configured; signal evaluation and email skipped."
+      - name: Email newly qualified research candidates
+        if: (env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != '' || env.PSX_OHLCV_URL_TEMPLATE != '') && env.ALERT_EMAIL_TO != '' && env.ALERT_SMTP_USER != '' && env.ALERT_SMTP_APP_PASSWORD != ''
+        run: python alerts.py --report reports/verdict.json --send
+      - name: Email configuration pending
+        if: (env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != '' || env.PSX_OHLCV_URL_TEMPLATE != '') && (env.ALERT_EMAIL_TO == '' || env.ALERT_SMTP_USER == '' || env.ALERT_SMTP_APP_PASSWORD == '')
+        run: echo "::notice::Candidate emails disabled until SMTP secrets are configured."
+      - name: Upload market-only research reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
