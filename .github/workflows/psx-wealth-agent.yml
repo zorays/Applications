@@ -50,7 +50,7 @@ jobs:
         run: python -m pip install "git+https://github.com/umairsandhu/psx-dps@58944679119cb65c076cbafe96b5a0a1f516969d"
       - name: Retrieve free daily OHLCV from PSX public history
         if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
-        run: python psx_dps_feed.py --watchlist watchlist.txt --months 6 --output data
+        run: python psx_dps_feed.py --watchlist watchlist.txt --months 5 --output data
       - name: Analyze free PSX history
         if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
         run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
