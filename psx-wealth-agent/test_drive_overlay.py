@@ -81,8 +81,8 @@ class OcrCloudSafetyTests(unittest.TestCase):
 
     def test_invalid_name_or_wrong_ticker_excluded(self):
         files = [
-            {"name":"SAZEW.csv", "mimeType":"text/csv", "modifiedTime":"2026-10-22T12:00Z"},
-            {"name":"SAZEW.review.json", "mimeType":"application/json", "modifiedTime":"2026-10-22T12:00Z"},
+            {"name":"SAZEW.vision.csv", "mimeType":"text/csv", "modifiedTime":"2026-10-22T12:00Z"},
+            {"name":"SAZEW.vision.review.json", "mimeType":"application/json", "modifiedTime":"2026-10-22T12:00Z"},
             {"name":"portfolio.csv", "mimeType":"text/csv", "modifiedTime":"2026-10-22T12:00Z"},
         ]
         chosen = best_matching_files(files, {"SAZEW"})
