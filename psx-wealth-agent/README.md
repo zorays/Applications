@@ -4,7 +4,7 @@ A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It 
 
 ## Data source
 
-Supports manually provided CSV data, a licensed HTTPS CSV provider, or an **explicit opt-in** [psxdata](https://github.com/psxdata/psxdata) mode (an unofficial, alpha-stage Python client that retrieves PSX public-page history). PSX does not provide this application an officially supported production API. Respect PSX access/redistribution terms, request limits and licensing requirements. An official licensed feed is preferable before production or commercial deployment. The collector may fail due to remote-site changes or GitHub-hosted runner restrictions.
+Supports **private Google Drive CSV uploads**, manually provided CSV data, a licensed HTTPS CSV provider, or an **explicit opt-in** [psxdata](https://github.com/psxdata/psxdata) mode (an unofficial, alpha-stage Python client that retrieves PSX public-page history). PSX does not provide this application an officially supported production API. Respect PSX access/redistribution terms, request limits and licensing requirements. An official licensed feed is preferable before production or commercial deployment. The collector may fail due to remote-site changes or GitHub-hosted runner restrictions.
 
 ## Initial watchlist
 
@@ -19,7 +19,7 @@ Requires Python 3.11+.
 ```bash
 cd psx-wealth-agent
 python -m pip install -r requirements.txt
-python -m unittest -v test_agent
+python -m unittest discover -p 'test_*.py' -v
 # Put authorized CSV files such as SAZEW.csv, LUCK.csv and SYS.csv in a local data folder.
 python agent.py --source csv --data-dir data --symbols SAZEW LUCK SYS --output reports
 ```
@@ -42,6 +42,50 @@ In **Settings → Secrets and variables → Actions**, create a repository secre
 Until the secret exists, successful CI verifies **only code/tests**, not live PSX prices. Live reports become available after the authorized endpoint is configured and a run succeeds.
 
 Navigate to **Actions → PSX Wealth Research → Run workflow** to test manually. Once a provider is configured, download the `psx-wealth-report` artifact from a successful run to read verdicts. Without a feed, the workflow simply reports a configuration warning.
+
+## EClear OMS → Google Drive → GitHub → email integration
+
+This integration is **implemented but not activated**. The desktop EClear OMS app must provide an **authorized historical OHLCV export**. Do not screen-scrape or capture hidden login services without EClear/StockHub permission. No EClear login/password is used.
+
+### Private Google Drive inbox
+
+A dedicated Google Drive folder named **PSX Wealth Agent - OHLCV Inbox** has been created in the user's connected Drive.
+
+- Upload **raw CSV**, not an account statement, a PDF, an Excel spreadsheet, or screenshots.
+- Filename must be **exactly** `SAZEW.csv`, `LUCK.csv`, `SYS.csv`, etc., matching a ticker in `DEFAULT_SYMBOLS` in `agent.py`. One CSV for each stock being monitored.
+- Every file needs the headers `date,open,high,low,close,volume`, with ISO dates (e.g. `2026-10-22`) and preferably at least 250 trading sessions (minimum 80 validated candles). Numerical prices should be **adjusted consistently for corporate actions** when supplied by the authorized source. Date rows must be sorted by the analyzer; do not insert summaries or monetary values as text.
+- Uploading updated versions of the same named CSV file is fine; importer chooses the newest item by modified time.
+- Google Drive for Desktop can **sync** an export directory after the OMS has created the CSV. Drive does **not** itself trigger the desktop OMS to generate reports. Configure that only through documented OMS functionality or manual export.
+- Never put account statements, broker credentials, trade records, portfolio balances, or personal files into this inbox.
+
+### Enable read-only Google Drive API access
+
+1. In Google Cloud, create or select a project, enable the **Google Drive API**, and create a service account with minimal privileges. Obtain its service-account email and JSON credentials through Google's authorized setup.
+2. In Google Drive, share **only the OHLCV inbox folder** with that service-account email as **Viewer**. A linked ChatGPT Drive connection does **not** automatically authenticate GitHub Actions.
+3. In GitHub `zorays/Applications → Settings → Secrets and variables → Actions`, add repository secrets:
+   - `GDRIVE_FOLDER_ID`: Drive folder ID of the market-only inbox.
+   - `GDRIVE_SERVICE_ACCOUNT_JSON`: **entire** service-account JSON, stored exclusively as a secret.
+4. Keep these secrets out of commits, issue comments, chat messages, screen captures and CSV files. Rotate/delete keys if exposed.
+
+The workflow scans at most 10 Drive API pages, reads only `{SYMBOL}.csv` matching its configured watchlist, verifies minimum OHLCV history, does not modify Drive files, and stores downloads only in the temporary GitHub runner. It will not read Google Sheets or PDFs.
+
+### Enable email alerts
+
+Use a dedicated SMTP-enabled sender account; Gmail may require two-factor authentication and an **app password**, not the normal account password. In GitHub repository Actions secrets, add:
+
+- `ALERT_EMAIL_TO`: desired destination email address.
+- `ALERT_SMTP_USER`: SMTP sender's email address.
+- `ALERT_SMTP_APP_PASSWORD`: SMTP app-specific password or permitted SMTP credential.
+
+The default SMTP server is `smtp.gmail.com` port 465. For a different provider add `ALERT_SMTP_HOST` to the workflow environment only after confirming its secure SMTP host and compatible authentication.
+
+**Alert criteria are deliberately strict.** Same-day fresh daily bar; Supertrend green; EMA10 > EMA21; close above SMA20; RSI14 50–70; volume at least 1.2× prior 20-day average; SMA20 deviation 0–8%; 20-day turnover proxy at least Rs3m; illustrative reward/risk at least 2; no technical-data warnings; technical component 15/15. These criteria generate a **TECHNICAL REVIEW**, not a trading recommendation.
+
+A technical signal cannot satisfy the remaining 85 points of the published 100-point system on its own. No financial, valuation, portfolio, current Shariah eligibility or execution-spread gates are yet approved. The agent never places an order.
+
+The workflow runs once after the market on each weekday (normally 17:45 PKT) and can be started manually under **Actions → PSX Wealth Research → Run workflow**. GitHub scheduling may be delayed, and repeated manual runs with the same day's qualifying data can produce duplicate alert emails until persistent deduplication is implemented. The daily research report is uploaded as an Actions artifact, **not** as a publicly committed file.
+
+If any required secrets are absent, the workflow runs **tests only** and emits a configuration notice; that success does **not** mean market retrieval and email delivery are active.
 
 ## What is implemented
 
