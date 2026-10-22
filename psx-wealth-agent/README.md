@@ -6,7 +6,7 @@ A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It 
 
 **Default: tested free PSX public-history feed via [psx-dps](https://github.com/umairsandhu/psx-dps)**, pinned to a known commit. GitHub cloud tests on October 22, 2026 downloaded **117 valid daily OHLCV bars each for all seven monitored stocks** and calculated RSI, EMA and Supertrend successfully ([seven-stock run](https://github.com/zorays/Applications/actions/runs/39769549232)).
 
-The psx-dps EOD route omits high and low, so `psx_dps_feed.py` uses the public monthly historical table to obtain complete OHLCV. The earlier `psxdata` package failed with `PSXAuthError` from GitHub and is no longer installed by default. Free PSX data is unofficial and may change; comply with PSX market-data access and redistribution requirements.
+The psx-dps EOD route omits high and low, so the initial history bootstrap uses complete monthly OHLCV. A tested whole-market daily historical table provides open, high, low, close and volume for all traded stocks in **one** request. The earlier `psxdata` package failed with `PSXAuthError` from GitHub and is no longer installed by default. Free PSX data is unofficial and may change; comply with PSX market-data access and redistribution requirements.
 
 Licensed Capital Stake API, Google Drive CSV and an authorized HTTPS CSV provider remain optional alternatives. No trading credentials or personal holdings are required.
 
@@ -16,7 +16,7 @@ The single source of truth for **all data feeds** is [`watchlist.txt`](https://g
 
 **To add or remove a stock:** open [Edit watchlist.txt](https://github.com/zorays/Applications/edit/master/psx-wealth-agent/watchlist.txt), click the pencil if needed, add/remove a line containing its exact PSX ticker (e.g., `PABC`), and choose **Commit changes** to the `master` branch. Use one ticker per line; blank lines, `#` comments, mixed case and repeated tickers are accepted. Each weekday scheduled run uses the newest committed watchlist. You can also ask ChatGPT to edit this file through the connected GitHub account.
 
-**Free-source limit: 36 distinct symbols with five months of history (maximum 180 historical month requests/day).** We currently monitor 33 symbols, leaving three more slots. Five calendar months generally provide enough sessions for the 80-bar indicator minimum, though new listings or interrupted data series may be unavailable. Invalid names, an empty file, or excessive tickers fail the run with a clear explanation. Symbols with no valid accessible history are marked unavailable rather than assigned a fake score; healthy symbols are still analyzed, with missing coverage explicitly disclosed. To monitor substantially more than 30 daily, obtain a licensed feed or design a low-request, staggered or cached collection schedule rather than increasing public-site traffic indiscriminately.
+**Free-source watchlist limit: 36 distinct symbols.** We currently monitor 33, leaving three more slots. To avoid repeatedly downloading 165 historical months, each normal market-data run makes **one whole-market daily OHLCV request** and bootstraps no more than **four** uninitialized tickers from five calendar months each (up to 21 standard market-data requests, before library transport probes). Five calendar months generally provide enough sessions for the 80-bar minimum; recently listed, illiquid or problematic symbols may remain pending. Invalid names, an empty file, or excessive tickers fail the run with a clear explanation. Symbols with no valid accessible history are marked unavailable rather than assigned a fake score; healthy symbols are still analyzed, with missing coverage explicitly disclosed. To expand substantially further, use a licensed feed and review capacity instead of simply increasing requests to the free PSX site.
 
 **Privacy:** This repository is public. The file lists market ticker interests only, not ownership, share quantities, broker logins, capital amounts, entry prices, or family-specific positions. Do not place such private details in it.
 
@@ -41,9 +41,9 @@ Data fetch or validation failure produces an explicit error and a nonzero proces
 
 ## Scheduled workflow
 
-The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays at roughly **17:45 PKT (12:45 UTC)**; GitHub schedule delivery may be delayed. Code pushes only run offline tests. Scheduled/manual runs default to the free psx-dps client when no licensed feed/Drive secret is configured, fetch roughly five calendar months of full daily OHLCV for the tickers in `watchlist.txt` and upload a market-only report artifact retained for 14 days.
+The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays at roughly **17:45 PKT (12:45 UTC)**; GitHub schedule delivery may be delayed. Code pushes only run offline tests. Scheduled/manual runs default to the free psx-dps client when no licensed feed/Drive secret is configured. The new **incremental_collector.py** updates established historical candles with **one whole-market daily historical request**, while onboarding at most **four** missing histories per run. Validated, market-only CSV data persists between runs through GitHub Actions cache (no portfolio data or private account information). Reports are uploaded as artifacts retained for 14 days.
 
-The original **seven** initial watchlist symbols passed a live GitHub-hosted end-to-end run on October 22, 2026: each returned 117 valid candles and a technical assessment. The expanded editable list now holds 33 tickers; individual data availability must still be checked per ticker. Scheduled execution is configured; its next actual cron execution and email delivery remain separate verification steps. No trade execution. SMTP research alerts remain disabled until email credentials are configured.
+The original seven watchlist symbols passed a live GitHub-hosted end-to-end run on October 22, 2026, and the **whole-market history endpoint returned 640 securities in a single-call diagnostic**. The first 33-symbol full-history attempt loaded nine symbols before SRR experienced a transport error and the library entered protective cooldown. The incremental collector is designed to avoid repeating that high-request workload; the complete 33-symbol scheduled roll-out must still be verified. Scheduled execution is configured; its next actual cron execution and email delivery remain separate verification steps. No trade execution. SMTP research alerts remain disabled until email credentials are configured.
 
 Use **Actions → PSX Wealth Research → Run workflow** to test manually. A code-push success means the offline tests passed, not necessarily that live data was retrieved.
 
@@ -144,9 +144,13 @@ Do not treat RSI, EMA and Supertrend as independent evidence: they are correlate
 
 ## Next iterations
 
-1. Validate the expanded 33-symbol watchlist and the next scheduled run; the original seven-ticker end-to-end test has passed.
-2. Expand the watchlist to construction and plastic-manufacturing candidates while respecting public-data request budgets.
+1. Verify the new incremental full-market daily update on a manual scheduled-style run and validate persistence across subsequent GitHub Actions runs; initial full-history coverage will grow by up to four tickers per successful run (around nine trading sessions for 33, excluding failures).
+2. Cross-check representative bulk daily candles and historical bootstrap series against EClear OMS; confirm source licensing/fair-use limitations.
 3. Add audited financial data, valuation and dated Shariah screening so a genuine 100-point verdict becomes possible.
 4. Handle corporate-action-adjusted price histories for returns and executable unadjusted prices for entries.
 5. Backtest with turnover, fees, missed fills and realistic liquidity.
 6. Add deduplicated SMTP research alerts and securely stored private household portfolio risk controls.
+
+### Understanding missing-ticker results
+
+A stock listed under **AWAITING INITIAL HISTORY** is not rejected by the investment strategy. It simply has not yet accumulated at least 80 validated OHLCV sessions in the GitHub cache. Data-source cooldown means upstream transport temporarily stopped; the collector **halts further history requests** for that run. Verified prior candles are preserved and reused, rather than hammering the PSX website. For failed or thin symbols, the report explicitly records the missing coverage; it never invents a technical score. If the GitHub cache is unavailable/expired, a new gradual historical onboarding cycle is required.
