@@ -21,7 +21,7 @@ from agent import DEFAULT_SYMBOLS, MIN_BARS, normalize
 
 PKT = ZoneInfo("Asia/Karachi")
 NAME = re.compile(r"^[A-Z][A-Z0-9]{1,11}$")
-MAX_WATCHLIST = 30
+MAX_WATCHLIST = 36
 
 
 def read_watchlist(path: str, max_symbols: int = MAX_WATCHLIST) -> list[str]:
@@ -105,7 +105,7 @@ def main():
     parser.add_argument("--output", default="data")
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
     parser.add_argument("--watchlist", default=None, help="GitHub-editable ticker list, one per line")
-    parser.add_argument("--months", type=int, default=6)
+    parser.add_argument("--months", type=int, default=5)
     args = parser.parse_args()
     if args.months < 5 or args.months > 12:
         parser.error("--months must be between 5 and 12")
