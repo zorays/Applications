@@ -21,6 +21,9 @@ jobs:
   research:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PSX_OHLCV_URL_TEMPLATE: ${{ secrets.PSX_OHLCV_URL_TEMPLATE }}
+      PSX_OHLCV_TOKEN: ${{ secrets.PSX_OHLCV_TOKEN }}
     defaults:
       run:
         working-directory: psx-wealth-agent
@@ -35,8 +38,12 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Run offline tests
         run: python -m unittest -v test_agent
-      - name: Research PSX watchlist
-        run: python agent.py --output reports
+      - name: Research PSX watchlist via authorized provider
+        if: env.PSX_OHLCV_URL_TEMPLATE != ''
+        run: python agent.py --source provider --output reports
+      - name: Show pending feed configuration
+        if: env.PSX_OHLCV_URL_TEMPLATE == ''
+        run: echo "::warning::PSX historical endpoint returned HTTP 403 from GitHub runner. Configure approved PSX_OHLCV_URL_TEMPLATE secret; live retrieval is skipped until then."
       - name: Upload research report (no private holdings)
         if: always()
         uses: actions/upload-artifact@v4
