@@ -7,7 +7,7 @@ on:
       - ".github/workflows/psx-wealth-agent.yml"
   workflow_dispatch:
   schedule:
-    # 12:45 UTC = 17:45 PKT; scheduled runs can be delayed by GitHub.
+    # 12:45 UTC = 17:45 PKT; GitHub scheduled actions can be delayed.
     - cron: "45 12 * * 1-5"
 
 permissions:
@@ -34,46 +34,53 @@ jobs:
       run:
         working-directory: psx-wealth-agent
     steps:
-      - name: Check out research repository
+      - name: Check out analysis repository
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies
+      - name: Install Python dependencies
         run: python -m pip install -r requirements.txt
-      - name: Validate analysis and alert rules offline
+      - name: Validate all strategy and data-source rules offline
         run: python -m unittest discover -p 'test_*.py' -v
 
-      - name: Import Capital Stake official EOD data (preferred)
-        if: env.CAPITALSTAKE_API_TOKEN != ''
+      - name: Install pin-locked open-source PSX historical client
+        if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
+        run: python -m pip install "git+https://github.com/umairsandhu/psx-dps@58944679119cb65c076cbafe96b5a0a1f516969d"
+      - name: Retrieve free daily OHLCV from PSX public history
+        if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
+        run: python psx_dps_feed.py --symbols SAZEW LUCK SYS OGDC FFC MEBL ENGROH --months 6 --output data
+      - name: Analyze free PSX history
+        if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
+        run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
+
+      - name: Import licensed Capital Stake EOD data when configured
+        if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN != ''
         run: python capitalstake_feed.py --output data
-      - name: Analyze Capital Stake historical EOD
-        if: env.CAPITALSTAKE_API_TOKEN != ''
+      - name: Analyze Capital Stake market data
+        if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN != ''
         run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
 
-      - name: Import approved OHLCV CSVs from Google Drive (fallback)
-        if: env.CAPITALSTAKE_API_TOKEN == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
+      - name: Import authorized Google Drive market CSVs when configured
+        if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
         run: python drive_ingest.py --output data
-      - name: Analyze Google Drive prices
-        if: env.CAPITALSTAKE_API_TOKEN == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
+      - name: Analyze Google Drive market CSVs
+        if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
         run: python agent.py --source csv --data-dir data --symbols-from-data-dir --output reports
 
-      - name: Analyze alternate licensed provider
-        if: env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE != ''
+      - name: Analyze alternative licensed CSV provider when configured
+        if: github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE != ''
         run: python agent.py --source provider --output reports
-      - name: Feed configuration pending
-        if: env.CAPITALSTAKE_API_TOKEN == '' && (env.GDRIVE_FOLDER_ID == '' || env.GDRIVE_SERVICE_ACCOUNT_JSON == '') && env.PSX_OHLCV_URL_TEMPLATE == ''
-        run: echo "::warning::No authorized API or Drive OHLCV feed configured; live data and alerts remain disabled."
 
-      - name: Email qualified technical-review candidates
-        if: github.event_name != 'push' && (env.CAPITALSTAKE_API_TOKEN != '' || (env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != '') || env.PSX_OHLCV_URL_TEMPLATE != '') && env.ALERT_EMAIL_TO != '' && env.ALERT_SMTP_USER != '' && env.ALERT_SMTP_APP_PASSWORD != ''
+      - name: Email technically qualified setups for manual review only
+        if: github.event_name != 'push' && env.ALERT_EMAIL_TO != '' && env.ALERT_SMTP_USER != '' && env.ALERT_SMTP_APP_PASSWORD != ''
         run: python alerts.py --report reports/verdict.json --send
-      - name: Email configuration pending
-        if: github.event_name != 'push' && (env.CAPITALSTAKE_API_TOKEN != '' || (env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != '') || env.PSX_OHLCV_URL_TEMPLATE != '') && (env.ALERT_EMAIL_TO == '' || env.ALERT_SMTP_USER == '' || env.ALERT_SMTP_APP_PASSWORD == '')
-        run: echo "::notice::Technical-review email disabled until SMTP secrets are configured."
+      - name: Notify if no email sender configured
+        if: github.event_name != 'push' && (env.ALERT_EMAIL_TO == '' || env.ALERT_SMTP_USER == '' || env.ALERT_SMTP_APP_PASSWORD == '')
+        run: echo "::notice::Daily research available as an artifact. Emails not enabled until dedicated SMTP secrets are configured."
 
-      - name: Upload market-only research reports
+      - name: Upload nonpersonal technical research report
         if: always()
         uses: actions/upload-artifact@v4
         with:
