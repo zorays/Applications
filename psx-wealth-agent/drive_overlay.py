@@ -128,10 +128,10 @@ def best_matching_files(items: list[dict], watch: set[str]) -> dict[str, dict[st
         if not isinstance(name, str):
             continue
         suffix = None
-        if name.endswith(".review.json"):
-            suffix = ".review.json"
-        elif name.endswith(".csv"):
-            suffix = ".csv"
+        if name.endswith(".vision.review.json"):
+            suffix = ".vision.review.json"
+        elif name.endswith(".vision.csv"):
+            suffix = ".vision.csv"
         if suffix is None:
             continue
         symbol = name[:-len(suffix)]
@@ -158,12 +158,12 @@ def import_all(session, folder_id: str, data_dir: Path, watch: set[str]) -> dict
     results, skipped = [], {}
     for symbol in sorted(found):
         entry = found[symbol]
-        if ".csv" not in entry or ".review.json" not in entry:
+        if ".vision.csv" not in entry or ".vision.review.json" not in entry:
             skipped[symbol] = "Needs both CSV and review metadata"
             continue
         try:
-            csv_data = download_csv(session, entry[".csv"])
-            meta_data = download_csv(session, entry[".review.json"])
+            csv_data = download_csv(session, entry[".vision.csv"])
+            meta_data = download_csv(session, entry[".vision.review.json"])
             result = import_one(data_dir, symbol, csv_data, meta_data)
             prev = states.get(symbol, {})
             prev_dates = set(prev.get("ocr_dates", [])) if isinstance(prev, dict) else set()
