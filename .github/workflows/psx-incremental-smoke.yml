@@ -1,4 +1,5 @@
 name: PSX Incremental Data Smoke Test
+# Second run verifies cached 4-stock history survives the first Actions job.
 
 on:
   push:
