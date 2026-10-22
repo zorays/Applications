@@ -1,0 +1,24 @@
+name: PSX Ollama Cloud Vision Unit Tests
+on:
+  push:
+    paths:
+      - "psx-wealth-agent/cloud_ollama_drive.gs"
+      - "psx-wealth-agent/test_cloud_ollama_drive.cjs"
+      - "psx-wealth-agent/drive_overlay.py"
+      - ".github/workflows/psx-ollama-cloud-tests.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-cloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify pure cloud app JavaScript syntax
+        run: node --check psx-wealth-agent/test_cloud_ollama_drive.cjs
+      - name: Verify screenshot scanning, request to hosted Ollama, CSV and approval
+        run: node psx-wealth-agent/test_cloud_ollama_drive.cjs
