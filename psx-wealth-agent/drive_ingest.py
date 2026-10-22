@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 
 from agent import DEFAULT_SYMBOLS, normalize
+from psx_dps_feed import read_watchlist
 
 DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 FILES_API = "https://www.googleapis.com/drive/v3/files"
@@ -91,8 +92,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data")
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
+    parser.add_argument("--watchlist", default=None)
     args = parser.parse_args()
-    allowed = set(args.symbols)
+    try:
+        allowed = set(read_watchlist(args.watchlist) if args.watchlist else args.symbols)
+    except ValueError as exc:
+        parser.error(str(exc))
     folder = os.getenv("GDRIVE_FOLDER_ID", "").strip()
     credential_json = os.getenv("GDRIVE_SERVICE_ACCOUNT_JSON", "")
     if not folder or not credential_json:
