@@ -17,6 +17,7 @@ import pandas as pd
 import requests
 
 from agent import DEFAULT_SYMBOLS, normalize
+from psx_dps_feed import read_watchlist
 
 API_ROOT = "https://csapis.com/3.0/market"
 PKT = ZoneInfo("Asia/Karachi")
@@ -73,10 +74,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Import licensed Capital Stake PSX candles")
     parser.add_argument("--output", default="data")
     parser.add_argument("--symbols", nargs="+", default=DEFAULT_SYMBOLS)
+    parser.add_argument("--watchlist", default=None)
     parser.add_argument("--lookback-days", type=int, default=550)
     parser.add_argument("--adjusted", action="store_true",
                         help="Dividend/split adjusted candles for backtests, not executable stops")
     args = parser.parse_args()
+    try:
+        symbols = read_watchlist(args.watchlist) if args.watchlist else args.symbols
+    except ValueError as exc:
+        parser.error(str(exc))
     if not 180 <= args.lookback_days <= 2500:
         parser.error("lookback-days must be 180–2500")
     token = os.getenv("CAPITALSTAKE_API_TOKEN", "").strip()
@@ -90,7 +96,7 @@ def main() -> int:
     saved = []
     errors = []
     with requests.Session() as session:
-        for symbol in dict.fromkeys(s.upper().strip() for s in args.symbols):
+        for symbol in dict.fromkeys(s.upper().strip() for s in symbols):
             try:
                 bars = fetch_bars(session, token, symbol, start, end, adjusted=args.adjusted)
                 (output / (symbol + ".csv")).write_text(
