@@ -260,7 +260,14 @@ def main() -> int:
     parser.add_argument("--source", choices=["auto", "csv", "provider", "psx"], default="auto")
     parser.add_argument("--data-dir", default="data")
     parser.add_argument("--symbols-from-data-dir", action="store_true")
+    parser.add_argument("--watchlist", default=None)
     args = parser.parse_args()
+    if args.watchlist and not args.symbols_from_data_dir:
+        from psx_dps_feed import read_watchlist
+        try:
+            args.symbols = read_watchlist(args.watchlist)
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.symbols_from_data_dir:
         data_path = Path(args.data_dir)
         detected = sorted(path.stem for path in data_path.glob("*.csv")
