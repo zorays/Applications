@@ -279,6 +279,16 @@ def main() -> int:
         )
     items: list[dict] = []
     errors: dict[str, str] = {}
+    if source == "csv":
+        error_path = Path(args.data_dir) / "fetch_errors.json"
+        if error_path.is_file():
+            try:
+                missing = json.loads(error_path.read_text(encoding="utf-8"))
+                if isinstance(missing, dict):
+                    errors.update({str(key): "Feed unavailable: " + str(value)[:60]
+                                   for key, value in missing.items()})
+            except (ValueError, OSError):
+                errors["FEED"] = "Unreadable feed coverage report"
     for symbol in dict.fromkeys(s.upper().strip() for s in args.symbols):
         try:
             if source == "unconfigured":
@@ -302,8 +312,9 @@ def main() -> int:
     report = render_report(items, errors, now.isoformat(timespec="minutes"))
     (output / "verdict.md").write_text(report, encoding="utf-8")
     print(report)
-    # Fail workflow if even one selected symbol could not be evaluated.
-    return 1 if errors else 0
+    # A missing ticker cannot generate a signal; healthy tickers can still
+    # be analyzed and reported. Fail only when no validated price data exists.
+    return 0 if items else 1
 
 
 if __name__ == "__main__":
