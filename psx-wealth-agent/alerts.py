@@ -42,7 +42,7 @@ def candidate(item: dict, today: str) -> bool:
     ])
 
 
-def make_message(items: list[dict], today: str) -> str:
+def make_message(items: list[dict], today: str, missing: dict | None = None) -> str:
     lines = [
         f"PSX TECHNICAL WATCHLIST — {today}",
         "",
@@ -59,6 +59,13 @@ def make_message(items: list[dict], today: str) -> str:
             f"technical component {item['technical_component_out_of_15']}/15",
             f"Illustrative reward/risk {item['illustrative_reward_risk']} (not a validated trade target/stop)",
             f"Daily bar: {item['last_bar']}",
+            "",
+        ]
+    if missing:
+        lines += [
+            "CAUTION: Partial watchlist coverage. No technical result was obtained for:",
+            ", ".join(sorted(missing)),
+            "These missing symbols were excluded, not presumed safe or unsafe.",
             "",
         ]
     lines += [
@@ -96,14 +103,14 @@ def main() -> int:
     args = parser.parse_args()
     data = json.loads(Path(args.report).read_text(encoding="utf-8"))
     now = datetime.now(PAKISTAN).date().isoformat()
-    if data.get("errors"):
-        print("Market data errors; suppressing emails until input problems are resolved")
-        return 0
+    missing = data.get("errors") or {}
+    if missing:
+        print("Partial watchlist coverage: " + ", ".join(sorted(missing)))
     selected = [item for item in data.get("results", []) if candidate(item, now)]
     if not selected:
         print("No *fresh* technical review setups. No email sent.")
         return 0
-    body = make_message(selected, now)
+    body = make_message(selected, now, missing=missing)
     print(f"Review candidates: {', '.join(item['symbol'] for item in selected)}")
     if args.send:
         try:
