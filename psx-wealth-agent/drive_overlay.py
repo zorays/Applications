@@ -27,6 +27,7 @@ MAX_META_BYTES = 100_000
 ALLOWED_SOURCES = {
     "ollama_vision_from_broker_screenshots",
     "gemini_cloud_vision_from_broker_screenshots",
+    "ollama_cloud_vision_from_broker_screenshots",
 }
 
 
