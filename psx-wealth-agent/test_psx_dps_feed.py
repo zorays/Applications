@@ -61,9 +61,20 @@ class AdapterTests(unittest.TestCase):
     def test_watchlist_maximum_enforced(self):
         with TemporaryDirectory() as root:
             p = Path(root) / "watchlist.txt"
-            p.write_text("\n".join(f"X{n:02d}" for n in range(31)))
-            with self.assertRaisesRegex(ValueError, "more than 30"):
+            p.write_text("\n".join(f"X{n:02d}" for n in range(37)))
+            with self.assertRaisesRegex(ValueError, "more than 36"):
                 read_watchlist(str(p))
+
+    def test_current_git_watchlist_includes_both_eclear_profiles(self):
+        symbols = read_watchlist(str(Path(__file__).with_name("watchlist.txt")))
+        expected = {"SAZEW", "LOADS", "OBOY", "CEPB", "ENGROH", "FFC", "LUCK",
+                    "MEBL", "NETSOL", "OGDC", "SIEM", "SLM", "SRR", "SYS",
+                    "TREET", "TRG", "TPLT", "DSIL", "PSO", "PPL", "MLCF",
+                    "DGKC", "WASL", "WAVES", "WAVESAPP", "THCCL", "ANL",
+                    "LOTCHEM"}
+        self.assertTrue(expected.issubset(set(symbols)))
+        self.assertEqual(len(symbols), 33)
+        self.assertLessEqual(len(symbols) * 5, 190)
 
     def test_watchlist_empty_rejected(self):
         with TemporaryDirectory() as root:
