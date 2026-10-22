@@ -143,7 +143,11 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
             deferred.append(symbol)
             continue
         if cooling or tried >= bootstrap_limit:
-            errors[symbol] = "Bootstrap pending; source cooldown or bounded daily request budget"
+            errors[symbol] = (
+                "Bootstrap pending; source cooldown, no further PSX requests this run"
+                if cooling else
+                "Bootstrap pending; scheduled for subsequent run within fair-use budget"
+            )
             deferred.append(symbol)
             continue
         tried += 1
