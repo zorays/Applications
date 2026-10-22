@@ -60,11 +60,12 @@ const context=vm.createContext({
   LockService:{getScriptLock(){return {tryLock:()=>true,releaseLock:()=>{}}}},
   ScriptApp:{getProjectTriggers(){return []},newTrigger(){return {timeBased(){return {everyMinutes(n){assert.equal(n,15);return {create(){triggering++;}}}}}}}},
   UrlFetchApp:{fetch(endpoint,options){
-    assert.match(endpoint,/gemini-3\.8-flash:generateContent$/);
+    assert.equal(endpoint,'https://ollama.com/api/chat');
     assert.equal(options.headers["Authorization"],"Bearer DUMMY_FOR_OFFLINE_TEST_ONLY");
     assert.equal(options.method,"post");
     const data=JSON.parse(options.payload);
-    assert.equal(data.model,"gemma4");\n    assert.equal(data.stream,false);
+    assert.equal(data.model,"gemma4");
+    assert.equal(data.stream,false);
     calls++;
     const imageText=Buffer.from(data.messages[0].images[0],"base64").toString();
     const first=imageText.startsWith("PAGE01");
@@ -97,7 +98,7 @@ const meta=root.files.find(f=>f.name==="SAZEW.vision.review.json");
 assert.ok(csv&&meta);
 assert.equal(csv.bytes.toString().trim().split("\n").length,3);
 assert.equal(JSON.parse(meta.bytes).reviewed,false);
-assert.equal(JSON.parse(meta.bytes).source,"gemini_cloud_vision_from_broker_screenshots");
+assert.equal(JSON.parse(meta.bytes).source,"ollama_cloud_vision_from_broker_screenshots");
 context.approveSymbol("SAZEW");
 assert.equal(JSON.parse(meta.bytes).reviewed,true);
 // Re-reading same screenshots must not spend another vision API call or reset approval.
