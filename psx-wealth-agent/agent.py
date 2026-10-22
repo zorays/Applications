@@ -178,7 +178,7 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
     }
 
 
-def render_report(items: list[dict], errors: dict[str, str], timestamp: str) -> str:
+def render_report(items: list[dict], errors: dict[str, str], timestamp: str, coverage: dict | None = None) -> str:
     out = [
         "# PSX Wealth Creation Agent — Daily Research",
         "",
@@ -190,6 +190,10 @@ def render_report(items: list[dict], errors: dict[str, str], timestamp: str) -> 
         "| Symbol | Close (PKR) | RSI14 | EMA10 > EMA21 | Supertrend | Technical /15 | Setup |",
         "|---|---:|---:|:---:|:---:|---:|---|",
     ]
+    if coverage:
+        out += ["", f"**Data coverage:** {coverage.get('completed', '?')}/{coverage.get('requested', '?')} symbols have at least {MIN_BARS} valid historical candles.",
+                f"**Source updates:** One whole-market daily price request; up to {coverage.get('historical_bootstrap_attempts', '?')} historical backfills this run.",
+                "**Uninitialized symbols:** Awaiting gradual backfill; NOT a bearish trading signal.", ""]
     for item in items:
         up = "Yes" if item["indicators"]["ema10_above_ema21"] else "No"
         st = "Green" if item["supertrend_green"] else "Red"
@@ -202,7 +206,11 @@ def render_report(items: list[dict], errors: dict[str, str], timestamp: str) -> 
         if item["warnings"]:
             out.append(f'- **{item["symbol"]}:** {", ".join(item["warnings"])}')
     for symbol, reason in errors.items():
-        out.append(f"- **{symbol}: DATA UNAVAILABLE** — {reason}")
+        label = ("AWAITING INITIAL HISTORY" if
+                 ("bootstrap pending" in reason.lower()
+                  or "bootstrap deferred" in reason.lower())
+                 else "DATA UNAVAILABLE")
+        out.append(f"- **{symbol}: {label}** — {reason}")
     if not errors and not any(i["warnings"] for i in items):
         out.append("No technical-data quality warnings.")
     out += [
@@ -296,6 +304,16 @@ def main() -> int:
                                    for key, value in missing.items()})
             except (ValueError, OSError):
                 errors["FEED"] = "Unreadable feed coverage report"
+    collection_summary = None
+    if source == "csv":
+        summary_path = Path(args.data_dir) / "collection_summary.json"
+        if summary_path.is_file():
+            try:
+                parsed = json.loads(summary_path.read_text(encoding="utf-8"))
+                if isinstance(parsed, dict):
+                    collection_summary = parsed
+            except (ValueError, OSError):
+                pass
     for symbol in dict.fromkeys(s.upper().strip() for s in args.symbols):
         try:
             if source == "unconfigured":
@@ -314,9 +332,10 @@ def main() -> int:
         "errors": errors,
         "trading_automation_enabled": False,
         "all_full_verdict_scores_pending": True,
+        "collection_summary": collection_summary,
     }
     (output / "verdict.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    report = render_report(items, errors, now.isoformat(timespec="minutes"))
+    report = render_report(items, errors, now.isoformat(timespec="minutes"), coverage=collection_summary)
     (output / "verdict.md").write_text(report, encoding="utf-8")
     print(report)
     # A missing ticker cannot generate a signal; healthy tickers can still
