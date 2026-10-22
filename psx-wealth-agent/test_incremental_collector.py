@@ -88,7 +88,7 @@ class IncrementalTests(unittest.TestCase):
             self.assertEqual(json.loads((place / "fetch_errors.json").read_text()), {})
             sazew = read_existing(place, "SAZEW", now.date())
             self.assertEqual(sazew["date"].iloc[-1].date(), now.date())
-            self.assertEqual((sazew["date"] == now.date()).sum(), 1)
+            self.assertEqual((sazew["date"].dt.date == now.date()).sum(), 1)
 
     def test_circuit_breaker_stops_backfill(self):
         now = datetime(2026, 10, 22, 18, tzinfo=PKT)
