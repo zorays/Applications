@@ -12,11 +12,11 @@ Licensed Capital Stake API, Google Drive CSV and an authorized HTTPS CSV provide
 
 ## Editable watchlist — no Python changes required
 
-The single source of truth for **all data feeds** is [`watchlist.txt`](https://github.com/zorays/Applications/blob/master/psx-wealth-agent/watchlist.txt), pre-populated with **25** PSX symbols drawn from existing research and the two EClear watchlist screenshots.
+The single source of truth for **all data feeds** is [`watchlist.txt`](https://github.com/zorays/Applications/blob/master/psx-wealth-agent/watchlist.txt), pre-populated with **33** PSX symbols, including all tickers visible in the two EClear Trade Cast profiles supplied on October 22, 2026, and the existing research candidates.
 
 **To add or remove a stock:** open [Edit watchlist.txt](https://github.com/zorays/Applications/edit/master/psx-wealth-agent/watchlist.txt), click the pencil if needed, add/remove a line containing its exact PSX ticker (e.g., `PABC`), and choose **Commit changes** to the `master` branch. Use one ticker per line; blank lines, `#` comments, mixed case and repeated tickers are accepted. Each weekday scheduled run uses the newest committed watchlist. You can also ask ChatGPT to edit this file through the connected GitHub account.
 
-**Free-source limit: 30 distinct symbols with six months of history (maximum 180 historical month requests/day).** We start at 25 to leave headroom. Invalid names, an empty file, or excessive tickers fail the run with a clear explanation. Symbols with no valid accessible history are marked unavailable rather than assigned a fake score; healthy symbols are still analyzed, with missing coverage explicitly disclosed. To monitor substantially more than 30 daily, obtain a licensed feed or design a low-request, staggered or cached collection schedule rather than increasing public-site traffic indiscriminately.
+**Free-source limit: 36 distinct symbols with five months of history (maximum 180 historical month requests/day).** We currently monitor 33 symbols, leaving three more slots. Five calendar months generally provide enough sessions for the 80-bar indicator minimum, though new listings or interrupted data series may be unavailable. Invalid names, an empty file, or excessive tickers fail the run with a clear explanation. Symbols with no valid accessible history are marked unavailable rather than assigned a fake score; healthy symbols are still analyzed, with missing coverage explicitly disclosed. To monitor substantially more than 30 daily, obtain a licensed feed or design a low-request, staggered or cached collection schedule rather than increasing public-site traffic indiscriminately.
 
 **Privacy:** This repository is public. The file lists market ticker interests only, not ownership, share quantities, broker logins, capital amounts, entry prices, or family-specific positions. Do not place such private details in it.
 
@@ -41,9 +41,9 @@ Data fetch or validation failure produces an explicit error and a nonzero proces
 
 ## Scheduled workflow
 
-The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays at roughly **17:45 PKT (12:45 UTC)**; GitHub schedule delivery may be delayed. Code pushes only run offline tests. Scheduled/manual runs default to the free psx-dps client when no licensed feed/Drive secret is configured, fetch roughly six months of full daily OHLCV for the tickers in `watchlist.txt` and upload a market-only report artifact retained for 14 days.
+The GitHub workflow `.github/workflows/psx-wealth-agent.yml` runs weekdays at roughly **17:45 PKT (12:45 UTC)**; GitHub schedule delivery may be delayed. Code pushes only run offline tests. Scheduled/manual runs default to the free psx-dps client when no licensed feed/Drive secret is configured, fetch roughly five calendar months of full daily OHLCV for the tickers in `watchlist.txt` and upload a market-only report artifact retained for 14 days.
 
-The original **seven** initial watchlist symbols passed a live GitHub-hosted end-to-end run on October 22, 2026: each returned 117 valid candles and a technical assessment. The expanded editable watchlist is under validation and its data availability must be checked per ticker. Scheduled execution is configured; its next actual cron execution and email delivery remain separate verification steps. No trade execution. SMTP research alerts remain disabled until email credentials are configured.
+The original **seven** initial watchlist symbols passed a live GitHub-hosted end-to-end run on October 22, 2026: each returned 117 valid candles and a technical assessment. The expanded editable list now holds 33 tickers; individual data availability must still be checked per ticker. Scheduled execution is configured; its next actual cron execution and email delivery remain separate verification steps. No trade execution. SMTP research alerts remain disabled until email credentials are configured.
 
 Use **Actions → PSX Wealth Research → Run workflow** to test manually. A code-push success means the offline tests passed, not necessarily that live data was retrieved.
 
@@ -144,7 +144,7 @@ Do not treat RSI, EMA and Supertrend as independent evidence: they are correlate
 
 ## Next iterations
 
-1. Validate the expanded 25-symbol watchlist and the next scheduled run; the original seven-ticker end-to-end test has passed.
+1. Validate the expanded 33-symbol watchlist and the next scheduled run; the original seven-ticker end-to-end test has passed.
 2. Expand the watchlist to construction and plastic-manufacturing candidates while respecting public-data request budgets.
 3. Add audited financial data, valuation and dated Shariah screening so a genuine 100-point verdict becomes possible.
 4. Handle corporate-action-adjusted price histories for returns and executable unadjusted prices for entries.
