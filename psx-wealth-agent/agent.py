@@ -304,6 +304,16 @@ def main() -> int:
                                    for key, value in missing.items()})
             except (ValueError, OSError):
                 errors["FEED"] = "Unreadable feed coverage report"
+    ocr_provenance = {}
+    if source == "csv":
+        provenance_path = Path(args.data_dir) / "ocr_sources.json"
+        if provenance_path.is_file():
+            try:
+                possible = json.loads(provenance_path.read_text(encoding="utf-8"))
+                if isinstance(possible, dict):
+                    ocr_provenance = possible
+            except (ValueError, OSError):
+                errors["PROVENANCE"] = "OCR evidence file unreadable; no price-based alert approval"
     collection_summary = None
     if source == "csv":
         summary_path = Path(args.data_dir) / "collection_summary.json"
@@ -319,7 +329,15 @@ def main() -> int:
             if source == "unconfigured":
                 raise ValueError("No authorized feed configured; supply provider secret or --source csv")
             raw = load_prices(symbol, source=source, data_dir=args.data_dir)
-            items.append(analyze(symbol, raw, today=now.date()))
+            result = analyze(symbol, raw, today=now.date())
+            provenance = ocr_provenance.get(symbol, {})
+            if isinstance(provenance, dict) and provenance.get("ocr_dates"):
+                result["warnings"].append("screenshot_derived_candles_need_independent_verification")
+                result["data_source"] = "PSX history supplemented with human-reviewed screenshot OCR"
+                result["ocr_supplemented"] = True
+                # Technical research may be shown, but alerts must be suppressed.
+                result["buy_approved"] = False
+            items.append(result)
         except Exception as exc:
             # Never include provider URLs or authentication values in public CI logs.
             msg = str(exc) if source == "csv" or source == "unconfigured" else type(exc).__name__
