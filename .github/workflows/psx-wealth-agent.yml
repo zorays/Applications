@@ -1,6 +1,10 @@
 name: PSX Wealth Research
 
 on:
+  push:
+    paths:
+      - "psx-wealth-agent/**"
+      - ".github/workflows/psx-wealth-agent.yml"
   workflow_dispatch:
   schedule:
     # 12:45 UTC is 17:45 PKT; GitHub schedules can be delayed.
