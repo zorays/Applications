@@ -46,3 +46,6 @@ LOTCHEM
 # Research ideas from Stock Hub screenshot, Oct 23 2026 (NOT buy approvals)
 PRL
 TPL
+
+# BNWM OHLCV broker screenshots archived Oct 23 2026; research-only, no automatic buy
+BNWM
