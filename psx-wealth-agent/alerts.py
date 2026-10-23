@@ -27,7 +27,8 @@ def candidate(item: dict, today: str) -> bool:
     vol = value("volume_ratio_to_prior_20d")
     dev = value("sma20_deviation_pct")
     turnover = value("median_daily_turnover_pkr_20d")
-    rr = value("illustrative_reward_risk")
+    scenario = item.get("hypothetical_7pct_trade") or {}
+    net_rr = scenario.get("net_reward_risk")
     return all([
         item.get("last_bar") == today,
         item.get("setup") == "B_TREND_RECOVERING",
@@ -38,7 +39,8 @@ def candidate(item: dict, today: str) -> bool:
         vol is not None and vol >= 1.2,
         dev is not None and 0 <= dev <= 8,
         turnover is not None and turnover >= 3_000_000,
-        rr is not None and rr >= 2,
+        scenario.get("status") == "RESEARCH_ONLY_POLICY_PASSED",
+        net_rr is not None and net_rr >= 1.61803398875,
     ])
 
 
@@ -57,7 +59,9 @@ def make_message(items: list[dict], today: str, missing: dict | None = None) -> 
             f"Supertrend {'green' if item['supertrend_green'] else 'red'}",
             f"Volume ratio {item['volume_ratio_to_prior_20d']}; "
             f"technical component {item['technical_component_out_of_15']}/15",
-            f"Illustrative reward/risk {item['illustrative_reward_risk']} (not a validated trade target/stop)",
+            f"Illustrative gross historical reward/risk {item['illustrative_reward_risk']}",
+            f"Hypothetical 7%-target post-cost R/R {(item.get('hypothetical_7pct_trade') or {}).get('net_reward_risk')} "
+            "(requires actual broker charges, tax status and a defensible stop)",
             f"Daily bar: {item['last_bar']}",
             "",
         ]
