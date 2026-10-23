@@ -92,6 +92,16 @@ assert.throws(() => context.validateRows_(
   [{date:"2026-05-11",open:"0",high:"0",low:"0",close:"63.85",volume:"0"}], 10),
   /Impossible OHLCV relationship/);
 
+// The model once hallucinated "2023" dates from an October 2026 DSIL source.
+assert.throws(() => context.validateRows_(
+  [{date:"2023-10-21",open:"24.85",high:"27.29",low:"24.80",close:"27.21",volume:"6312751"}], 10),
+  /Historical date outside 480-day OCR window/);
+assert.throws(() => context.verifyScreenshotAnchor_("DSIL__page01.png",
+  [{date:"2026-10-22"}]),
+  /Screenshot date anchor mismatch/);
+assert.equal(context.verifyScreenshotAnchor_("SAZEW__page01.png",
+  [{date:"2026-10-22"}]), undefined);
+
 assert.equal(context.safeVisionFailure_(new Error("Image ticker mismatch")), "Image ticker mismatch");
 assert.equal(context.safeVisionFailure_(new Error("No legible full OHLC rows found")), "No legible full OHLC rows found");
 assert.equal(context.safeVisionFailure_(new Error("Ollama Cloud HTTP 401")), "Ollama Cloud HTTP 401");
