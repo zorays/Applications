@@ -10,6 +10,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
+from trade_policy import PHI, evaluate_trade
 
 DEFAULT_SYMBOLS = [
     "SAZEW", "LUCK", "SYS", "OGDC", "FFC", "MEBL", "ENGROH",
@@ -173,6 +174,11 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
     risk = price - support20
     reward = resistance60 - price
     rr = reward / risk if risk > 0 and reward > 0 else None
+    # A hypothetical 7%-gross-target trade uses the actual 20-session low
+    # as a candidate stop. Its 25k/3% sizing and 15%-CGT assumptions are
+    # explicitly NOT verified broker charges or personal position settings.
+    hypothetical_trade = (evaluate_trade(price, support20)
+                          if support20 > 0 and support20 < price else None)
     flags = []
     if days_old < 0 or days_old > 7:
         flags.append(f"stale_or_future_data_{days_old}_calendar_days")
@@ -180,8 +186,9 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
         flags.append("thin_turnover_proxy")
     if volume_ratio is None:
         flags.append("volume_comparison_unavailable")
-    if rr is None or rr < 2:
-        flags.append("illustrative_reward_risk_below_2_or_unavailable")
+    if (hypothetical_trade is None or
+        hypothetical_trade["status"] != "RESEARCH_ONLY_POLICY_PASSED"):
+        flags.append("hypothetical_after_cost_golden_ratio_not_met")
 
     return {
         "symbol": symbol,
@@ -210,6 +217,7 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
         "illustrative_support_20d": round_or_none(support20),
         "illustrative_resistance_60d": round_or_none(resistance60),
         "illustrative_reward_risk": round_or_none(rr),
+        "hypothetical_7pct_trade": hypothetical_trade,
         "indicators": conditions,
         "warnings": flags,
         "fundamental_score": None,
