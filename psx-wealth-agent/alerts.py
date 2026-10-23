@@ -40,7 +40,7 @@ def candidate(item: dict, today: str) -> bool:
         dev is not None and 0 <= dev <= 8,
         turnover is not None and turnover >= 3_000_000,
         scenario.get("status") == "RESEARCH_ONLY_POLICY_PASSED",
-        net_rr is not None and net_rr >= 1.61803398875,
+        net_rr is not None and net_rr >= 1.618,  # full-precision phi check is in trade_policy
     ])
 
 
