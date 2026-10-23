@@ -242,6 +242,7 @@ function callOllama_(bytes, mime, symbol) {
     'Read ONLY the centered modal popup titled OHLC History. Ignore watchlists, bid/ask depth, the side panels and summary statistics.',
     'Read ONLY visible Date/Open/High/Low/Close/Volume rows for ' + symbol + '.',
     'For each candle verify Low <= Open,Close <= High. If any digit is unclear, omit the entire row.',
+    'Exclude non-trading EClear placeholders including weekends with Open=High=Low=0, Volume=0 and a carried-forward close.',
     'Use exact digits as displayed and valid YYYY-MM-DD dates.',
     'Do not include Change column, chart values, statistics, account data or other symbols.',
     'Do not invent, guess, extrapolate, or fill dates hidden offscreen.',
@@ -394,10 +395,15 @@ function validateRows_(rows, limit) {
         day > today) throw new Error('Invalid OHLC date');
     const obj = {date:day};
     for (const col of PSX.CSV_COLS.slice(1)) obj[col] = numeric_(row[col], col==='volume');
-    // EClear sometimes displays zero-filled non-trading placeholders.
-    // Exclude ONLY an entirely zero row; never turn it into a candle.
+    // EClear can display nontrading placeholders, including Saturday lines
+    // with O=H=L=0, volume=0 and an inherited previous close. These are
+    // NOT candles. Drop only all-zero rows, or weekend zero-OHL placeholders;
+    // any other partial-zero/OHLC inconsistency still fails closed.
     if (PSX.CSV_COLS.slice(1).every(col=>obj[col] === 0)) continue;
-    if ([0,6].includes(d.getUTCDay())) throw new Error('Nonzero weekend OHLC row');
+    const isWeekend = [0,6].includes(d.getUTCDay());
+    if (isWeekend && obj.volume === 0 &&
+        obj.open === 0 && obj.high === 0 && obj.low === 0) continue;
+    if (isWeekend) throw new Error('Nonzero weekend OHLC row');
     if (obj.volume < 0 || Math.min(obj.open,obj.high,obj.low,obj.close) <= 0 ||
         obj.high < Math.max(obj.open,obj.close) ||
         obj.low > Math.min(obj.open,obj.close) || obj.low > obj.high) {
