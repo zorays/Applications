@@ -153,9 +153,13 @@ function scanVisionInbox_() {
         try { priorMeta = JSON.parse(oldMetaFile.getBlob().getDataAsString('UTF-8')); }
         catch (_) {}
       }
+      const currentHashes = parts.map(x=>x.imageSha256).sort();
       const unchanged = oldCsv && priorMeta &&
           priorMeta.csv_sha256 === checksum &&
-          priorMeta.row_count === merged.length;
+          priorMeta.row_count === merged.length &&
+          Array.isArray(priorMeta.image_hashes) &&
+          JSON.stringify(priorMeta.image_hashes.slice().sort()) ===
+              JSON.stringify(currentHashes);
       if (!unchanged) replaceText_(root, filename, csv, 'text/csv');
       const approved = Boolean(unchanged && priorMeta.reviewed === true);
       const metadata = {
@@ -163,7 +167,7 @@ function scanVisionInbox_() {
         extractor:'ollama_cloud_vision', csv_sha256:checksum,
         row_count:merged.length, reviewed:approved,
         reviewed_at: approved ? priorMeta.reviewed_at : null,
-        image_hashes: parts.map(x=>x.imageSha256).sort(),
+        image_hashes: currentHashes,
         generated_at: new Date().toISOString(),
         note:'OCR transcription is NOT buy/sell authorization. Check every row before approval.'
       };
