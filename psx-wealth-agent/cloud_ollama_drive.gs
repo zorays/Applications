@@ -102,12 +102,16 @@ function scanVisionInbox_() {
     }
     if (attempted >= PSX.MAX_PER_TICK) continue;
     attempted++;
+    let stage = 'ollama_api';
     try {
       const reply = callOllama_(bytes, file.getMimeType(), entry.symbol);
+      stage = 'ticker_check';
       if (reply.symbol.toUpperCase() !== entry.symbol) throw new Error('Image ticker mismatch');
+      stage = 'ohlcv_validation';
       const clean = validateRows_(reply.visible_rows, PSX.MAX_SCREEN_ROWS);
       // Empty crops are not stored; image can be retried after correction.
       if (!clean.length) throw new Error('No legible full OHLC rows found');
+      stage = 'saving_evidence';
       const part = {
         symbol: entry.symbol, imageId: file.getId(), imageName:file.getName(),
         imageSha256:sha, rows:clean, model: model_(),
@@ -119,7 +123,7 @@ function scanVisionInbox_() {
     } catch (err) {
       // Safe diagnostics: never log API keys, request bodies, images, or model output.
       const reason = safeVisionFailure_(err);
-      console.error('Image ' + file.getName() + ': extraction failed — ' + reason);
+      console.error('Image ' + file.getName() + ': extraction failed at ' + stage + ' — ' + reason);
       if (/quota|429|RESOURCE_EXHAUSTED/i.test(reason)) break;
     }
   }
