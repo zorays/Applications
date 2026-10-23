@@ -84,6 +84,11 @@ const context=vm.createContext({
 });
 vm.runInContext(source,context);
 context.testVisionValidation();
+assert.equal(context.safeVisionFailure_(new Error("Image ticker mismatch")), "Image ticker mismatch");
+assert.equal(context.safeVisionFailure_(new Error("No legible full OHLC rows found")), "No legible full OHLC rows found");
+assert.equal(context.safeVisionFailure_(new Error("Ollama Cloud HTTP 401")), "Ollama Cloud HTTP 401");
+assert.equal(context.safeVisionFailure_(new SyntaxError("Unexpected model text")), "Ollama returned non-JSON or malformed JSON");
+assert.equal(context.safeVisionFailure_(new Error("TOKEN_API_KEY_SENSITIVE")), "Unexpected processing error (Error)");
 context.setupVisionCloud();
 assert.equal(triggering,1);
 const inbox=root.folders.find(x=>x.name==="Screenshots");
