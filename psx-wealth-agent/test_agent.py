@@ -32,6 +32,17 @@ class AgentTests(unittest.TestCase):
         self.assertFalse(result["buy_approved"])
         self.assertEqual(result["technical_component_out_of_15"], 15)
 
+    def test_sma_10_21_and_mean_reversion_are_research_only(self):
+        result = analyze("TEST", synthetic_prices(), today=date(2026, 5, 10))
+        self.assertIsNotNone(result["sma10"])
+        self.assertIsNotNone(result["sma21"])
+        self.assertIsNotNone(result["sma50"])
+        self.assertIsNone(result["sma200"])  # only 130 real bars available
+        self.assertIn("mean_reversion_state", result)
+        self.assertTrue(0 <= result["mean_reversion_research_component_out_of_20"] <= 20)
+        self.assertIsNone(result["full_verdict_score"])
+        self.assertFalse(result["buy_approved"])
+
     def test_downtrend(self):
         data = synthetic_prices(direction=-1)
         result = analyze("TEST", data, today=date(2026, 5, 10))
