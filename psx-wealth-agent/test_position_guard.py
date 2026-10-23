@@ -73,6 +73,24 @@ class PositionGuardTests(unittest.TestCase):
             {"style": "long_term", "take_profit": 120}, "2026-10-22")
         self.assertEqual(result["verdict"], "TAKE_PROFIT_REVIEW")
 
+    def test_seven_percent_gross_review_applies_to_tactical_lots_with_entry(self):
+        config = parse_portfolios('{"AccountA":{"TEST":{"style":"tactical","entry":100}}}')
+        entry = config["AccountA"]["TEST"]["entry"]
+        result = evaluate_position(
+            radar(close=107, rsi14=55, ema_bearish=False,
+                  supertrend_red=False, below_sma20=False),
+            {"style":"tactical", "entry":entry}, "2026-10-22")
+        self.assertEqual(result["verdict"], "TAKE_PROFIT_REVIEW")
+        self.assertTrue(result["notify"])
+        self.assertIn("GROSS", result["reasons"][0])
+
+    def test_long_term_does_not_auto_sell_at_seven_percent(self):
+        result = evaluate_position(
+            radar(close=107, rsi14=55, ema_bearish=False,
+                  supertrend_red=False, below_sma20=False),
+            {"style":"long_term", "entry":100}, "2026-10-22")
+        self.assertEqual(result["verdict"], "HOLD_REVIEW")
+
     def test_stale_prices_can_never_trigger_exit_email(self):
         outcome = evaluate_position(radar(date="2026-10-21", close=85),
                                     {"stop": 90}, "2026-10-22")
