@@ -249,7 +249,7 @@ function callOllama_(bytes, mime, symbol, filename) {
   const prompt = [
     'You are transcribing a screenshot of a Pakistan Stock Exchange OHLC History table.',
     'The screenshot is from an export captured in 2026. Read the YEAR literally. The year is 2025 or 2026 on the provided 251-session images; 2023 is definitely wrong.',
-    'Today's date is ' + referenceDate + '. If you cannot read a date correctly, omit the whole row.',
+    'Today is ' + referenceDate + '. If you cannot read a date correctly, omit the whole row.',
     anchor ? 'HUMAN-VERIFIED visible table: top date is ' + anchor.newest +
              ', bottom date is ' + anchor.oldest + ', exactly ' + anchor.rows +
              ' rows. Use these only to check the displayed table, never to infer missing prices.' : '',
