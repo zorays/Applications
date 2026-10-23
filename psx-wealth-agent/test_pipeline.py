@@ -45,6 +45,10 @@ class AlertTests(unittest.TestCase):
             "sma20_deviation_pct": 3,
             "median_daily_turnover_pkr_20d": 5000000,
             "illustrative_reward_risk": 2.8,
+            "hypothetical_7pct_trade": {
+                "status": "RESEARCH_ONLY_POLICY_PASSED",
+                "net_reward_risk": 1.9,
+            },
             "close_pkr": 100,
             "ema10": 101,
             "ema21": 99,
