@@ -99,7 +99,11 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
     df = normalize(raw)
     today = today or date.today()
     close = df["close"]
+    sma10 = close.rolling(10).mean()
     sma20 = close.rolling(20).mean()
+    sma21 = close.rolling(21).mean()
+    sma50 = close.rolling(50).mean()
+    sma200 = close.rolling(200).mean()
     ema10 = close.ewm(span=10, adjust=False, min_periods=10).mean()
     ema21 = close.ewm(span=21, adjust=False, min_periods=21).mean()
     rsi14 = rsi_wilder(close)
@@ -112,6 +116,19 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
     price = float(close.iloc[-1])
     deviation = 100 * (price / float(sma20.iloc[-1]) - 1)
     rsi_value = float(rsi14.iloc[-1])
+    prior_rsi = float(rsi14.iloc[-2])
+    deviation50 = 100 * (price / float(sma50.iloc[-1]) - 1)
+    # Mean-reversion is independently observed rather than added to the
+    # momentum score: buying an oversold downtrend is not automatically safe.
+    if deviation50 <= -20 and rsi_value < 30:
+        mean_reversion_state = "EXTREME_OVERSOLD_CAUTION"
+    elif (-20 <= deviation50 <= -5 and 30 <= rsi_value <= 55
+          and rsi_value > prior_rsi and price > float(close.iloc[-2])):
+        mean_reversion_state = "POTENTIAL_RECOVERY_RESEARCH_ONLY"
+    elif deviation50 <= -10:
+        mean_reversion_state = "DEEP_DISCOUNT_NO_REVERSAL"
+    else:
+        mean_reversion_state = "NO_CONFIRMED_REVERSAL"
 
     # Technical component: exactly five observations, 3 points each.
     conditions = {
@@ -150,7 +167,14 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
         "symbol": symbol,
         "last_bar": last_date.isoformat(),
         "close_pkr": round_or_none(price),
+        "sma10": round_or_none(sma10.iloc[-1]),
         "sma20": round_or_none(sma20.iloc[-1]),
+        "sma21": round_or_none(sma21.iloc[-1]),
+        "sma50": round_or_none(sma50.iloc[-1]),
+        "sma200": round_or_none(sma200.iloc[-1]),
+        "sma50_deviation_pct": round_or_none(deviation50),
+        "prior_rsi14": round_or_none(prior_rsi),
+        "mean_reversion_state": mean_reversion_state,
         "ema10": round_or_none(ema10.iloc[-1]),
         "ema21": round_or_none(ema21.iloc[-1]),
         "rsi14": round_or_none(rsi_value),
