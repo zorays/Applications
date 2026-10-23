@@ -239,7 +239,9 @@ function callOllama_(bytes, mime, symbol) {
     'Return ONLY JSON: {"symbol":"' + symbol + '","visible_rows":[',
     '{"date":"YYYY-MM-DD","open":"0.00","high":"0.00","low":"0.00","close":"0.00","volume":"0"}',
     ']}. The numeric examples are schema placeholders, NOT data.',
+    'Read ONLY the centered modal popup titled OHLC History. Ignore watchlists, bid/ask depth, the side panels and summary statistics.',
     'Read ONLY visible Date/Open/High/Low/Close/Volume rows for ' + symbol + '.',
+    'For each candle verify Low <= Open,Close <= High. If any digit is unclear, omit the entire row.',
     'Use exact digits as displayed and valid YYYY-MM-DD dates.',
     'Do not include Change column, chart values, statistics, account data or other symbols.',
     'Do not invent, guess, extrapolate, or fill dates hidden offscreen.',
@@ -332,6 +334,32 @@ function diagnoseDSILPage01() {
     console.log('Ollama returned symbol=' + String(reply.symbol).slice(0,15) +
                 '; candidate rows=' + reply.visible_rows.length);
     if (reply.symbol.toUpperCase() !== 'DSIL') throw new Error('Image ticker mismatch');
+    // Diagnose each row separately, without logging untrusted text or credentials.
+    // This lets us pinpoint a misread date/high/low/open/close instead of
+    // reporting that the entire 12-row response is "impossible".
+    let invalid = 0;
+    reply.visible_rows.forEach((row, index) => {
+      try {
+        validateRows_([row], 1);
+      } catch (error) {
+        invalid++;
+        const rawDate = row && typeof row.date === 'string' ? row.date : '';
+        const dateLabel = /^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate) ? rawDate : '[invalid date]';
+        const val = key => {
+          const raw = String(row && row[key] === undefined ? '' : row[key]);
+          return /^\\d{1,12}(?:,\\d{3})*(?:\\.\\d{1,8})?$/.test(raw) ? raw : '[invalid]';
+        };
+        console.error('Row ' + (index + 1) + ' (' + dateLabel + '): ' +
+          safeVisionFailure_(error) + ' — O=' + val('open') +
+          ', H=' + val('high') + ', L=' + val('low') +
+          ', C=' + val('close') + ', Volume=' + val('volume'));
+      }
+    });
+    if (invalid) {
+      console.error('DSIL screenshot blocked: ' + invalid +
+                    ' invalid row(s). Correct/crop and rerun; do not approve OCR CSV.');
+      return;
+    }
     const rows = validateRows_(reply.visible_rows, PSX.MAX_SCREEN_ROWS);
     console.log('DSIL validation passed; accepted ' + rows.length +
                 ' rows. Run scanVisionInbox to write CSV.');
