@@ -54,7 +54,7 @@ const context=vm.createContext({
   },
   PropertiesService:{getScriptProperties(){return {getProperty(key){
     if (key==="OLLAMA_API_KEY") return "DUMMY_FOR_OFFLINE_TEST_ONLY";
-    if (key==="OLLAMA_CLOUD_MODEL") return "gemma4";
+    if (key==="OLLAMA_CLOUD_MODEL") return "gemma4:cloud";
     return null;}}}},
   DriveApp:{getFolderById(id){assert.equal(id,"1kkQ7McRCcVDGZWHM8xrkN4-5dzMhT-ek");return root;}},
   LockService:{getScriptLock(){return {tryLock:()=>true,releaseLock:()=>{}}}},
@@ -64,7 +64,7 @@ const context=vm.createContext({
     assert.equal(options.headers["Authorization"],"Bearer DUMMY_FOR_OFFLINE_TEST_ONLY");
     assert.equal(options.method,"post");
     const data=JSON.parse(options.payload);
-    assert.equal(data.model,"gemma4");
+    assert.equal(data.model,"gemma4:cloud");
     assert.equal(data.stream,false);
     calls++;
     const imageText=Buffer.from(data.messages[0].images[0],"base64").toString();
