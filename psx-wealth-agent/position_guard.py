@@ -52,13 +52,13 @@ def parse_portfolios(raw: str) -> dict[str, dict[str, dict]]:
                 raise ValueError("Invalid symbol in private portfolio")
             if not isinstance(settings, dict):
                 raise ValueError("Each position must provide a settings object")
-            if set(settings) - {"style", "stop", "take_profit"}:
+            if set(settings) - {"style", "stop", "take_profit", "entry"}:
                 raise ValueError("Unsupported private position field")
             style = settings.get("style", "long_term")
             if style not in STYLES:
                 raise ValueError("Position style must be tactical or long_term")
             validated = {"style": style}
-            for key in ("stop", "take_profit"):
+            for key in ("stop", "take_profit", "entry"):
                 if key in settings:
                     v = settings[key]
                     if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(float(v)) or not (0 < v < 10_000_000):
@@ -133,6 +133,10 @@ def evaluate_position(radar: dict, settings: dict, today: str, max_bar_age_days:
         verdict = "REDUCE_REVIEW"
     elif "take_profit" in settings and price >= settings["take_profit"]:
         reasons.append("Owner-defined profit-taking level reached")
+        verdict = "TAKE_PROFIT_REVIEW"
+    elif (style == "tactical" and "entry" in settings and
+          price >= settings["entry"] * 1.07):
+        reasons.append("Tactical holding reached 7% GROSS price gain; review after fees and taxes")
         verdict = "TAKE_PROFIT_REVIEW"
     elif risk:
         reasons.append("Bearish indicators persist without a new exit trigger")
