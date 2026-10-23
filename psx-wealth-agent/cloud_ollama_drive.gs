@@ -117,9 +117,10 @@ function scanVisionInbox_() {
       changed.add(entry.symbol);
       console.log('Extracted ' + clean.length + ' visible candles for ' + entry.symbol);
     } catch (err) {
-      // Suppress service-key contents, prompt or image data from logs.
-      console.error('Image ' + file.getName() + ': extraction failed (' + err.name + ')');
-      if (/quota|429|RESOURCE_EXHAUSTED/i.test(String(err))) break;
+      // Safe diagnostics: never log API keys, request bodies, images, or model output.
+      const reason = safeVisionFailure_(err);
+      console.error('Image ' + file.getName() + ': extraction failed — ' + reason);
+      if (/quota|429|RESOURCE_EXHAUSTED/i.test(reason)) break;
     }
   }
 
@@ -273,6 +274,66 @@ function callOllama_(bytes, mime, symbol) {
     throw new Error('Malformed Ollama response JSON');
   }
   return parsed;
+}
+
+/**
+ * Emit only known internal error strings, never remote response text or secrets.
+ * In particular, a model OCR issue should not be reported simply as "Error".
+ */
+function safeVisionFailure_(error) {
+  const message = String(error && error.message || '');
+  const known = [
+    /^Ollama Cloud HTTP [0-9]{3}$/,
+    /^Unsupported image MIME type$/,
+    /^Missing Ollama Cloud API key$/,
+    /^Image ticker mismatch$/,
+    /^Invalid visible rows$/,
+    /^Malformed OCR record$/,
+    /^Date must be YYYY-MM-DD$/,
+    /^Invalid OHLC date$/,
+    /^Nonzero weekend OHLC row$/,
+    /^Ambiguous numeric value$/,
+    /^Invalid numeric magnitude$/,
+    /^Impossible OHLCV relationship$/,
+    /^No legible full OHLC rows found$/,
+    /^Invalid Ollama text content$/,
+    /^Malformed Ollama response JSON$/,
+    /^Conflicting duplicated date [0-9-]{10}$/,
+  ];
+  if (known.some(pattern => pattern.test(message))) return message;
+  const errorName = String(error && error.name || 'UnknownError');
+  if (errorName === 'SyntaxError') return 'Ollama returned non-JSON or malformed JSON';
+  if (errorName === 'QuotaExceeded') return 'Ollama quota/HTTP 429';
+  if (errorName === 'OllamaCloudRequestFailed') return /^Ollama Cloud HTTP [0-9]{3}$/.test(message)
+    ? message : 'Ollama HTTP request rejected';
+  if (errorName === 'Exception') return 'Google Apps Script service exception (check Executions for details)';
+  return 'Unexpected processing error (' +
+    errorName.replace(/[^a-zA-Z0-9_]/g, '').slice(0,40) + ')';
+}
+
+/**
+ * One-shot diagnostic for the uploaded DSIL__page01.png.
+ * Unlike the scheduled run, this does NOT create CSV or spend credits on 3 images.
+ * Prints data-shape/count and validated status, never OCR values or credentials.
+ */
+function diagnoseDSILPage01() {
+  const root = DriveApp.getFolderById(PSX.FOLDER_ID);
+  const screenshots = ensureSubfolder_(root, PSX.IMAGE_FOLDER);
+  const file = findOne_(screenshots, 'DSIL__page01.png');
+  if (!file) throw new Error('DSIL__page01.png is missing from Screenshots');
+  console.log('Diagnostic image found. MIME=' + file.getMimeType() +
+              '; bytes=' + file.getSize() + '; model=' + model_());
+  try {
+    const reply = callOllama_(file.getBlob().getBytes(), file.getMimeType(), 'DSIL');
+    console.log('Ollama returned symbol=' + String(reply.symbol).slice(0,15) +
+                '; candidate rows=' + reply.visible_rows.length);
+    if (reply.symbol.toUpperCase() !== 'DSIL') throw new Error('Image ticker mismatch');
+    const rows = validateRows_(reply.visible_rows, PSX.MAX_SCREEN_ROWS);
+    console.log('DSIL validation passed; accepted ' + rows.length +
+                ' rows. Run scanVisionInbox to write CSV.');
+  } catch (error) {
+    console.error('DSIL diagnostic: ' + safeVisionFailure_(error));
+  }
 }
 
 function model_() {
