@@ -1,6 +1,6 @@
 # PSX Wealth Creation Agent — research prototype
 
-A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It implements the technical part of the October 2026 **Contrarian–Momentum Framework**; it deliberately does **not** calculate or display an invented full 100-point rating or approve purchases.
+A **research-only** daily OHLCV monitor for Pakistan Stock Exchange tickers. It implements the technical part of the October 2026 **Contrarian–Momentum Framework**; it deliberately does **not** calculate or display an invented full 100-point rating or approve purchases. As of October 23, it records a **15-point EMA/RSI/Supertrend momentum component** and a separate **20-point SMA50/RSI mean-reversion research component**, plus a **3%-capital-risk / 7%-gross-target / minimum 1.618 net R:R hypothetical policy calculator**. The other 65 points remain unverified. **[Full trading policy and activation notes](TRADE_POLICY.md)**.
 
 ## Local Ollama vision screenshots → Drive → GitHub
 
