@@ -130,7 +130,27 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
     else:
         mean_reversion_state = "NO_CONFIRMED_REVERSAL"
 
-    # Technical component: exactly five observations, 3 points each.
+    # Separate, preliminary mean-reversion evidence out of 20; NOT a
+    # completed investment verdict and NOT independent of price momentum.
+    reversion_checks = {
+        "sma50_discount_10_to_20_pct": -20 <= deviation50 <= -10,
+        "rsi_recovery_from_oversold": (
+            prior_rsi < 35 and 30 <= rsi_value <= 55 and rsi_value > prior_rsi
+        ),
+        "up_close_vs_prior_session": price > float(close.iloc[-2]),
+        "volume_at_least_prior_20d_mean": volume_ratio is not None and volume_ratio >= 1.0,
+        "close_above_sma10": price > float(sma10.iloc[-1]),
+    }
+    reversion_weights = {
+        "sma50_discount_10_to_20_pct": 5,
+        "rsi_recovery_from_oversold": 6,
+        "up_close_vs_prior_session": 3,
+        "volume_at_least_prior_20d_mean": 3,
+        "close_above_sma10": 3,
+    }
+    reversion_score = sum(reversion_weights[k] for k, yes in reversion_checks.items() if yes)
+
+    # Technical momentum component: exactly five observations, 3 points each.
     conditions = {
         "close_above_sma20": price > float(sma20.iloc[-1]),
         "ema10_above_ema21": float(ema10.iloc[-1]) > float(ema21.iloc[-1]),
@@ -175,6 +195,8 @@ def analyze(symbol: str, raw: pd.DataFrame, today: date | None = None) -> dict:
         "sma50_deviation_pct": round_or_none(deviation50),
         "prior_rsi14": round_or_none(prior_rsi),
         "mean_reversion_state": mean_reversion_state,
+        "mean_reversion_research_component_out_of_20": reversion_score,
+        "mean_reversion_checks": reversion_checks,
         "ema10": round_or_none(ema10.iloc[-1]),
         "ema21": round_or_none(ema21.iloc[-1]),
         "rsi14": round_or_none(rsi_value),
