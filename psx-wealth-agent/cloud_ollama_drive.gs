@@ -344,10 +344,10 @@ function diagnoseDSILPage01() {
       } catch (error) {
         invalid++;
         const rawDate = row && typeof row.date === 'string' ? row.date : '';
-        const dateLabel = /^\\d{4}-\\d{2}-\\d{2}$/.test(rawDate) ? rawDate : '[invalid date]';
+        const dateLabel = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : '[invalid date]';
         const val = key => {
-          const raw = String(row && row[key] === undefined ? '' : row[key]);
-          return /^\\d{1,12}(?:,\\d{3})*(?:\\.\\d{1,8})?$/.test(raw) ? raw : '[invalid]';
+          const raw = String(row && row[key] !== undefined ? row[key] : '');
+          return /^\d{1,12}(?:,\d{3})*(?:\.\d{1,8})?$/.test(raw) ? raw : '[invalid]';
         };
         console.error('Row ' + (index + 1) + ' (' + dateLabel + '): ' +
           safeVisionFailure_(error) + ' — O=' + val('open') +
