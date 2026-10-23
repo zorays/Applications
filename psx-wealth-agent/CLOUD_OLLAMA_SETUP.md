@@ -1,6 +1,6 @@
 # PSX EClear screenshots → Ollama Cloud → Google Drive → GitHub
 
-**Pipeline status:** GitHub cloud OCR script and mocked tests are implemented. The screenshots upload folder has been created on your Google Drive. **The hosted Ollama API key, Google Apps Script permissions/trigger, and real EClear screen acquisition are not configured yet.** No API key is stored in GitHub.
+**Pipeline status (October 23, 2026):** GitHub cloud OCR script and mocked tests are implemented. The Screenshots Google Drive folder is configured and **18 DSIL price-history screenshot files (DSIL__page01.png through DSIL__page18.png) have been uploaded and verified in Drive**. **The hosted Ollama API key and Google Apps Script permissions/trigger are not yet configured.** No key is stored in GitHub. Previously uploaded captures can be processed without recapturing them, but further automatically capturing the Windows EClear screen requires a separate desktop agent.
 
 ## Your actual flow
 
@@ -16,11 +16,11 @@
 - Copy the entire source from [cloud_ollama_drive.gs](https://github.com/zorays/Applications/blob/master/psx-wealth-agent/cloud_ollama_drive.gs) to `Code.gs`. Save.
 - Open **Project Settings → Script Properties → Add script property**.
   - `OLLAMA_API_KEY` = your private [Ollama API key](https://ollama.com/settings/keys).
-  - `OLLAMA_CLOUD_MODEL` = an **image-capable cloud model listed on your Ollama account**, e.g. `gemma4` if it appears as a cloud-enabled model in your catalog. Model availability can change; verify the exact ID via Ollama's model library before choosing.
+  - `OLLAMA_CLOUD_MODEL` = an **image-capable cloud model listed on your Ollama account**, for example `gemma4:cloud` (a vision-capable hosted model listed in Ollama's model library). Model availability can change; verify the exact ID via Ollama's model library before choosing.
 - In the function dropdown, choose **testVisionValidation**, click Run. This test uses mock OHLC data and does not call Ollama.
 - Choose **setupVisionCloud**, click Run, and approve Google's Drive management and external-request permissions. This creates a 15-minute timed trigger that executes **scanVisionInbox**.
-- Put `SAZEW__page01.png` (a clearly cropped EClear OHLC history grid, not a holding/account screenshot) into the linked Screenshots folder. Run **scanVisionInbox** manually once and inspect **Executions**. The script should create `SAZEW.vision.csv` and `SAZEW.vision.review.json` in the parent [OHLCV inbox](https://drive.google.com/drive/folders/1kkQ7McRCcVDGZWHM8xrkN4-5dzMhT-ek).
-- The first export is **reviewed=false**. Open its CSV and check every date, price and volume manually against EClear. To mark it reviewed, change the ticker within `approveSAZEWAfterManualVerification()` if necessary, then run that function. It revokes approval automatically when input screenshots change.
+- **Already present: 18 DSIL files** in Screenshots. Run **scanVisionInbox** manually once and inspect **Executions**. The script should create `DSIL.vision.csv` and `DSIL.vision.review.json` in the parent [OHLCV inbox](https://drive.google.com/drive/folders/1kkQ7McRCcVDGZWHM8xrkN4-5dzMhT-ek).
+- The first export is **reviewed=false**. Open its CSV and check every date, price and volume manually against EClear. To mark it reviewed, add a wrapper like `function approveDSIL(){ approveSymbol('DSIL'); }`, save, select `approveDSIL` and run only after examining the entire CSV. It revokes approval automatically when input screenshots change.
 
 ## GitHub integration
 
@@ -40,3 +40,7 @@ Run [PSX Wealth Research](https://github.com/zorays/Applications/actions/workflo
 **Cost and permissions:** Ollama Cloud inference may be metered; Apps Script Drive/UrlFetch quotas also apply. Do not use unbounded triggers or retry loops. Cloud API endpoint: `https://ollama.com/api/chat`, authenticated with a bearer token; images are sent as base64 in the chat message. Ollama Cloud may not support the local API's structured output format, so the script validates returned JSON independently.
 
 **Safety/security:** remove brokerage account numbers, order activity and personally identifying information from screenshots before sharing with any cloud vision provider. Do not expose API keys in screenshots, GitHub code or chat.
+
+## Screenshot-specific extraction warning
+
+The DSIL screenshots also include occasional **all-zero nontrading date placeholders**. The cloud script now drops only rows where every price and volume field is zero, rather than treating them as historical OHLCV candles; all other implausible values still fail validation. Overlapping pages and dates are deduplicated. The visible images do **not** prove that every one of the broker's reported 251 history records is captured, so check that dates and row counts meet the strategy's required lookback before evaluating technical signals.
