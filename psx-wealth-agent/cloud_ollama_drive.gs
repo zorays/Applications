@@ -14,7 +14,7 @@ const PSX = Object.freeze({
   FOLDER_ID: '1kkQ7McRCcVDGZWHM8xrkN4-5dzMhT-ek',
   IMAGE_FOLDER: 'Screenshots',
   PART_FOLDER: 'OCR Evidence',
-  MODEL_FALLBACK: 'gemma4',
+  MODEL_FALLBACK: 'gemma4:cloud',
   PKT: 'Asia/Karachi',
   MAX_IMAGE_BYTES: 5 * 1024 * 1024,
   MAX_PER_TICK: 3,
@@ -294,9 +294,13 @@ function validateRows_(rows, limit) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('Date must be YYYY-MM-DD');
     const d = new Date(day + 'T00:00:00Z');
     if (isNaN(d.getTime()) || d.toISOString().slice(0,10) !== day ||
-        day > today || [0,6].includes(d.getUTCDay())) throw new Error('Invalid OHLC date');
+        day > today) throw new Error('Invalid OHLC date');
     const obj = {date:day};
     for (const col of PSX.CSV_COLS.slice(1)) obj[col] = numeric_(row[col], col==='volume');
+    // EClear sometimes displays zero-filled non-trading placeholders.
+    // Exclude ONLY an entirely zero row; never turn it into a candle.
+    if (PSX.CSV_COLS.slice(1).every(col=>obj[col] === 0)) continue;
+    if ([0,6].includes(d.getUTCDay())) throw new Error('Nonzero weekend OHLC row');
     if (obj.volume < 0 || Math.min(obj.open,obj.high,obj.low,obj.close) <= 0 ||
         obj.high < Math.max(obj.open,obj.close) ||
         obj.low > Math.min(obj.open,obj.close) || obj.low > obj.high) {
