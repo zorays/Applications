@@ -84,6 +84,14 @@ const context=vm.createContext({
 });
 vm.runInContext(source,context);
 context.testVisionValidation();
+assert.deepEqual(JSON.parse(JSON.stringify(context.validateRows_(
+  [{date:"2026-05-09",open:"0",high:"0",low:"0",close:"63.85",volume:"0"}], 10))), []);
+assert.deepEqual(JSON.parse(JSON.stringify(context.validateRows_(
+  [{date:"2025-11-22",open:"0",high:"0",low:"0",close:"61.49",volume:"0"}], 10))), []);
+assert.throws(() => context.validateRows_(
+  [{date:"2026-05-11",open:"0",high:"0",low:"0",close:"63.85",volume:"0"}], 10),
+  /Impossible OHLCV relationship/);
+
 assert.equal(context.safeVisionFailure_(new Error("Image ticker mismatch")), "Image ticker mismatch");
 assert.equal(context.safeVisionFailure_(new Error("No legible full OHLC rows found")), "No legible full OHLC rows found");
 assert.equal(context.safeVisionFailure_(new Error("Ollama Cloud HTTP 401")), "Ollama Cloud HTTP 401");
