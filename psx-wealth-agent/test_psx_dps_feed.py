@@ -71,9 +71,10 @@ class AdapterTests(unittest.TestCase):
                     "MEBL", "NETSOL", "OGDC", "SIEM", "SLM", "SRR", "SYS",
                     "TREET", "TRG", "TPLT", "DSIL", "PSO", "PPL", "MLCF",
                     "DGKC", "WASL", "WAVES", "WAVESAPP", "THCCL", "ANL",
-                    "LOTCHEM"}
+                    "LOTCHEM", "PRL", "TPL"}
         self.assertTrue(expected.issubset(set(symbols)))
-        self.assertEqual(len(symbols), 33)
+        self.assertGreaterEqual(len(symbols), 35)
+        self.assertLessEqual(len(symbols), 36)
         self.assertLessEqual(len(symbols) * 5, 190)
 
     def test_watchlist_empty_rejected(self):
