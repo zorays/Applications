@@ -20,8 +20,17 @@ const PSX = Object.freeze({
   MAX_PER_TICK: 3,
   MAX_SCREEN_ROWS: 100,
   MAX_SYMBOL_ROWS: 1000,
+  // 251 trading sessions usually span 12-16 calendar months, not 3 years.
+  MAX_HISTORY_CALENDAR_DAYS: 480,
   NAME_PATTERN: /^([A-Z][A-Z0-9]{1,11})__.+\.(png|jpg|jpeg|webp)$/i,
   CSV_COLS: ['date','open','high','low','close','volume'],
+});
+// Source anchors are confirmed by visually reading the actual screenshot.
+// They are *validation gates*, not fabricated values for the vision model.
+const SCREENSHOT_ANCHORS = Object.freeze({
+  'DSIL__page01.png': Object.freeze({
+    newest:'2026-10-22', oldest:'2026-10-06', rows:13
+  })
 });
 
 // Run once as your Google account, then authorize Drive and external requests.
@@ -104,11 +113,12 @@ function scanVisionInbox_() {
     attempted++;
     let stage = 'ollama_api';
     try {
-      const reply = callOllama_(bytes, file.getMimeType(), entry.symbol);
+      const reply = callOllama_(bytes, file.getMimeType(), entry.symbol, file.getName());
       stage = 'ticker_check';
       if (reply.symbol.toUpperCase() !== entry.symbol) throw new Error('Image ticker mismatch');
       stage = 'ohlcv_validation';
       const clean = validateRows_(reply.visible_rows, PSX.MAX_SCREEN_ROWS);
+      verifyScreenshotAnchor_(file.getName(), clean);
       // Empty crops are not stored; image can be retried after correction.
       if (!clean.length) throw new Error('No legible full OHLC rows found');
       stage = 'saving_evidence';
@@ -226,7 +236,7 @@ function approveSAZEWAfterManualVerification() {
   approveSymbol('SAZEW');
 }
 
-function callOllama_(bytes, mime, symbol) {
+function callOllama_(bytes, mime, symbol, filename) {
   if (!['image/png','image/jpeg','image/webp'].includes(mime)) {
     throw new Error('Unsupported image MIME type');
   }
@@ -234,8 +244,15 @@ function callOllama_(bytes, mime, symbol) {
   if (!key) throw new Error('Missing Ollama Cloud API key');
   // Official Ollama hosted API accepts base64 screenshots in images[].
   const endpoint = 'https://ollama.com/api/chat';
+  const anchor = SCREENSHOT_ANCHORS[filename];
+  const referenceDate = Utilities.formatDate(new Date(), PSX.PKT, 'yyyy-MM-dd');
   const prompt = [
-    'You are transcribing an image of a Pakistan Stock Exchange OHLC History table.',
+    'You are transcribing a screenshot of a Pakistan Stock Exchange OHLC History table.',
+    'The screenshot is from an export captured in 2026. Read the YEAR literally. The year is 2025 or 2026 on the provided 251-session images; 2023 is definitely wrong.',
+    'Today's date is ' + referenceDate + '. If you cannot read a date correctly, omit the whole row.',
+    anchor ? 'HUMAN-VERIFIED visible table: top date is ' + anchor.newest +
+             ', bottom date is ' + anchor.oldest + ', exactly ' + anchor.rows +
+             ' rows. Use these only to check the displayed table, never to infer missing prices.' : '',
     'Return ONLY JSON: {"symbol":"' + symbol + '","visible_rows":[',
     '{"date":"YYYY-MM-DD","open":"0.00","high":"0.00","low":"0.00","close":"0.00","volume":"0"}',
     ']}. The numeric examples are schema placeholders, NOT data.',
@@ -243,6 +260,10 @@ function callOllama_(bytes, mime, symbol) {
     'Read ONLY visible Date/Open/High/Low/Close/Volume rows for ' + symbol + '.',
     'For each candle verify Low <= Open,Close <= High. If any digit is unclear, omit the entire row.',
     'Exclude non-trading EClear placeholders including weekends with Open=High=Low=0, Volume=0 and a carried-forward close.',
+    'Read the dates in DD-MMM-YYYY format in the FIRST column. Never transform October 2026 into October 2023.',
+    'Copy each row left-to-right and align all six columns exactly; do not swap Volume with Change.',
+    'Volumes are whole share quantities, not decimal fractions. Never place a Change percentage or price in Volume.',
+    'If a figure conflicts with daily Low/High, reread the exact original cell and omit if still uncertain.',
     'Use exact digits as displayed and valid YYYY-MM-DD dates.',
     'Do not include Change column, chart values, statistics, account data or other symbols.',
     'Do not invent, guess, extrapolate, or fill dates hidden offscreen.',
@@ -298,6 +319,8 @@ function safeVisionFailure_(error) {
     /^Malformed OCR record$/,
     /^Date must be YYYY-MM-DD$/,
     /^Invalid OHLC date$/,
+    /^Historical date outside 480-day OCR window$/,
+    /^Screenshot date anchor mismatch$/,
     /^Nonzero weekend OHLC row$/,
     /^Ambiguous numeric value$/,
     /^Invalid numeric magnitude$/,
@@ -331,7 +354,7 @@ function diagnoseDSILPage01() {
   console.log('Diagnostic image found. MIME=' + file.getMimeType() +
               '; bytes=' + file.getSize() + '; model=' + model_());
   try {
-    const reply = callOllama_(file.getBlob().getBytes(), file.getMimeType(), 'DSIL');
+    const reply = callOllama_(file.getBlob().getBytes(), file.getMimeType(), 'DSIL', file.getName());
     console.log('Ollama returned symbol=' + String(reply.symbol).slice(0,15) +
                 '; candidate rows=' + reply.visible_rows.length);
     if (reply.symbol.toUpperCase() !== 'DSIL') throw new Error('Image ticker mismatch');
@@ -362,6 +385,7 @@ function diagnoseDSILPage01() {
       return;
     }
     const rows = validateRows_(reply.visible_rows, PSX.MAX_SCREEN_ROWS);
+    verifyScreenshotAnchor_(file.getName(), rows);
     console.log('DSIL validation passed; accepted ' + rows.length +
                 ' rows. Run scanVisionInbox to write CSV.');
   } catch (error) {
@@ -393,6 +417,10 @@ function validateRows_(rows, limit) {
     const d = new Date(day + 'T00:00:00Z');
     if (isNaN(d.getTime()) || d.toISOString().slice(0,10) !== day ||
         day > today) throw new Error('Invalid OHLC date');
+    const daysOld = (Date.parse(today + 'T00:00:00Z') - d.getTime()) / 86400000;
+    if (daysOld > PSX.MAX_HISTORY_CALENDAR_DAYS) {
+      throw new Error('Historical date outside 480-day OCR window');
+    }
     const obj = {date:day};
     for (const col of PSX.CSV_COLS.slice(1)) obj[col] = numeric_(row[col], col==='volume');
     // EClear can display nontrading placeholders, including Saturday lines
@@ -417,6 +445,22 @@ function validateRows_(rows, limit) {
   }
   return Object.keys(seen).sort().map(k=>seen[k]);
 }
+/**
+ * Check anchored evidence; no candidate from a cropped screenshot should
+ * pass merely because each OHLC tuple is numerically possible.
+ * A fully visible page has 13 source rows; dates come from verified EClear.
+ */
+function verifyScreenshotAnchor_(filename, rows) {
+  const a = SCREENSHOT_ANCHORS[filename];
+  if (!a) return;
+  const dates = rows.map(row=>row.date).sort();
+  if (dates.length !== a.rows ||
+      dates[0] !== a.oldest ||
+      dates[dates.length - 1] !== a.newest) {
+    throw new Error('Screenshot date anchor mismatch');
+  }
+}
+
 function mergeParts_(parts) {
   const merged = {};
   for (const p of parts) {
