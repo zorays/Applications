@@ -42,3 +42,7 @@ WAVESAPP
 THCCL
 ANL
 LOTCHEM
+
+# Research ideas from Stock Hub screenshot, Oct 23 2026 (NOT buy approvals)
+PRL
+TPL
