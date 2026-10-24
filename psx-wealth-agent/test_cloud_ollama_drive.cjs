@@ -126,7 +126,7 @@ const fair=context.interleaveBySymbol_([
   {symbol:"DSIL",id:1},{symbol:"DSIL",id:2},{symbol:"DSIL",id:3},
   {symbol:"BNWM",id:4},{symbol:"BNWM",id:5}
 ]);
-assert.deepEqual(fair.map(x=>x.id),[1,4,2,5,3]);
+assert.deepEqual(Array.from(fair, x=>x.id),[1,4,2,5,3]);
 context.setupVisionCloud();
 assert.equal(triggering,1);
 const inbox=root.folders.find(x=>x.name==="Screenshots");
