@@ -92,6 +92,12 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
     directory.mkdir(parents=True, exist_ok=True)
     today = now.date()
     cached = {symbol: read_existing(directory, symbol, today) for symbol in watchlist}
+    # Independently fetched PSX reference data must NEVER be seeded from
+    # data/SYMBOL.csv, which may contain previously reviewed screenshot OCR.
+    reference_dir = directory / "independent_psx"
+    reference_dir.mkdir(parents=True, exist_ok=True)
+    references = {symbol: read_existing(reference_dir, symbol, today)
+                  for symbol in watchlist}
     state = load_state(directory)
     retry_after = state.get("retry_after") or {}
     errors: dict[str, str] = {}
@@ -129,6 +135,19 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
         cached[symbol] = bars
         atomic_text(directory / (symbol + ".csv"), bars.to_csv(index=False))
 
+    # Independently collected exchange observations update their own cache.
+    # Never promote existing OCR-backed data into a trusted reference.
+    for symbol, bars in references.items():
+        if bars is None or len(bars) < MIN_BARS:
+            continue
+        if symbol in bulk:
+            try:
+                bars = append_session(bars, bulk[symbol])
+            except (ValueError, TypeError):
+                data_warnings[symbol] = "Independent PSX reference daily bar failed validation"
+        references[symbol] = bars
+        atomic_text(reference_dir / (symbol + ".csv"), bars.to_csv(index=False))
+
     # Historical backfills are *only* for symbols without an initial window.
     initial = [s for s in watchlist if cached[s] is None or len(cached[s]) < MIN_BARS]
     queue = [s for s in PRIORITY if s in initial] + [s for s in initial if s not in PRIORITY]
@@ -159,6 +178,10 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
             frame = frame.tail(MAX_ROWS).reset_index(drop=True)
             atomic_text(directory / (symbol + ".csv"), frame.to_csv(index=False))
             cached[symbol] = frame
+            # Only a direct get_bars() result may establish this independent
+            # reference. It is not derived from old CSV or Ollama evidence.
+            atomic_text(reference_dir / (symbol + ".csv"), frame.to_csv(index=False))
+            references[symbol] = frame
             bootstrapped.append(symbol)
             retry_after.pop(symbol, None)
         except Exception as exc:
@@ -173,6 +196,39 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
                 cooling = True
                 print(f"Stopped historical backfill after {kind}; "
                       "no additional PSX history requests this run")
+
+    # Use any remaining small daily bootstrap budget to independently
+    # corroborate old cached price history. The main CSV alone is NOT proof
+    # of trusted provenance, even if it already contains >=80 rows.
+    for symbol in watchlist:
+        if cooling or tried >= bootstrap_limit:
+            break
+        if references[symbol] is not None or cached[symbol] is None:
+            continue
+        if len(cached[symbol]) < MIN_BARS:
+            continue
+        next_day = retry_after.get("reference_" + symbol)
+        if next_day and next_day > today.isoformat():
+            continue
+        tried += 1
+        try:
+            verified = get_bars(client, symbol, now, months=months)
+            if symbol in bulk:
+                verified = append_session(verified, bulk[symbol])
+            verified = verified.tail(MAX_ROWS).reset_index(drop=True)
+            atomic_text(reference_dir / (symbol + ".csv"),
+                        verified.to_csv(index=False))
+            references[symbol] = verified
+            retry_after.pop("reference_" + symbol, None)
+            print(f"{symbol}: independent PSX history reference established")
+        except Exception as exc:
+            kind = type(exc).__name__
+            if kind in ("ValueError", "NoData", "UnknownSymbol"):
+                retry_after["reference_" + symbol] = (today + timedelta(days=7)).isoformat()
+            if kind in ("CoolingDown", "TransportError", "NoHealthyNode",
+                        "RateLimited", "UpstreamError"):
+                cooling = True
+                print("Independent reference backfill stopped after " + kind)
 
     complete = {}
     for symbol in watchlist:
@@ -191,6 +247,8 @@ def collect(client, directory: Path, watchlist: list[str], now: datetime,
         "bulk_watchlist_candles": len(bulk),
         "historical_bootstrap_attempts": tried,
         "historical_bootstrapped": bootstrapped,
+        "independent_reference_ready": [s for s in watchlist
+                                         if references[s] is not None],
         "deferred": deferred,
         "data_warnings": data_warnings,
         "cooldown_respected": cooling,
@@ -221,7 +279,8 @@ def main():
         parser.error("Request ceiling would exceed configured watchlist limit")
     from psx_dps import Client
     now = datetime.now(PKT)
-    # Up to 4*5 + 1 requests per run, plus light source node probes.
+    # Up to 4*5 + 1 requests per run, whether filling main cache or
+    # independently corroborating it, plus light source node probes.
     with Client(min_interval=3.0, daily_budget=50, timeout=20, retries=1) as client:
         summary = collect(
             client, Path(args.output), watchlist, now,
