@@ -93,6 +93,57 @@ class OcrCloudSafetyTests(unittest.TestCase):
             self.assertTrue(result["ready_for_research"])
             self.assertEqual(len(pd.read_csv(folder / "SAZEW.csv")), 90)
 
+    def test_user_trusted_broker_ocr_imports_without_second_feed(self):
+        with TemporaryDirectory() as d:
+            folder = Path(d)
+            rows = screenshot_rows(90)
+            days = pd.bdate_range(end=pd.Timestamp.today().normalize(),
+                                  periods=len(rows))
+            for row, day in zip(rows, days):
+                row["date"] = day.strftime("%Y-%m-%d")
+            content, proof = pair(rows, reviewed=False)
+            meta = json.loads(proof)
+            meta["source"] = "ollama_cloud_vision_from_broker_screenshots"
+            result = import_one(folder, "SAZEW", content,
+                                json.dumps(meta).encode(),
+                                trust_broker_screenshots=True)
+            self.assertEqual(result["verification"], "owner_trusted_broker_ocr_research_only")
+            self.assertTrue(result["ready_for_research"])
+            self.assertEqual(len(pd.read_csv(folder / "SAZEW.csv")), 90)
+
+    def test_user_trusted_broker_ocr_rejects_missing_sessions(self):
+        with TemporaryDirectory() as d:
+            folder = Path(d)
+            rows = screenshot_rows(90)
+            days = pd.bdate_range(end=pd.Timestamp.today().normalize(),
+                                  periods=len(rows))
+            for row, day in zip(rows, days):
+                row["date"] = day.strftime("%Y-%m-%d")
+            for row in rows[:35]:
+                row["date"] = (pd.Timestamp(row["date"]) - pd.Timedelta(days=25)).strftime("%Y-%m-%d")
+            content, proof = pair(rows, reviewed=False)
+            meta = json.loads(proof)
+            meta["source"] = "ollama_cloud_vision_from_broker_screenshots"
+            with self.assertRaisesRegex(ValueError, "large calendar-date gap"):
+                import_one(folder, "SAZEW", content,
+                           json.dumps(meta).encode(), trust_broker_screenshots=True)
+
+    def test_user_trusted_broker_ocr_not_automatically_approved_for_trades(self):
+        with TemporaryDirectory() as d:
+            folder = Path(d)
+            rows = screenshot_rows(90)
+            days = pd.bdate_range(end=pd.Timestamp.today().normalize(),
+                                  periods=len(rows))
+            for row, day in zip(rows, days):
+                row["date"] = day.strftime("%Y-%m-%d")
+            content, proof = pair(rows, reviewed=False)
+            meta = json.loads(proof)
+            meta["source"] = "ollama_cloud_vision_from_broker_screenshots"
+            result = import_one(folder, "SAZEW", content,
+                                json.dumps(meta).encode(), trust_broker_screenshots=True)
+            self.assertEqual(result["independently_matched_rows"], 0)
+            self.assertNotEqual(result["verification"], "auto_verified_independent_psx")
+
     def test_unreviewed_ocr_cannot_self_verify_against_main_cache(self):
         with TemporaryDirectory() as d:
             folder = Path(d)
