@@ -1,5 +1,17 @@
 # PSX EClear screenshots → Ollama Cloud → Google Drive → GitHub
 
+## Automatic CSV verification — 24 October 2026
+
+**Yes, CSV files can become eligible for GitHub research without clicking `approveSymbol`.** The research workflow now has an independent-reference gate: `incremental_collector.py` writes separately downloaded PSX daily candles into `data/independent_psx/SYMBOL.csv`, then `drive_overlay.py` checks every OCR date, every open/high/low/close price (within PKR 0.011), and **exact share volume** against this trusted, separately fetched reference. The reference is NEVER copied from `data/SYMBOL.csv` because that main cache may already contain OCR-derived observations. Source-side historical availability remains a real limitation; missing or mismatching records cannot pass.
+
+**Outcome A: `auto_verified_independent_psx`** — an unreviewed `SYMBOL.vision.csv` that independently matches on **100% of its rows** is automatically included in GitHub research; no human approval is required. `ocr_import_summary.json`, `ocr_sources.json` and the verdict report record verification status. The independent archive is collected gradually under the existing 4-history-backfills/day request budget.
+
+**Outcome B: pending reference** — if independent PSX data lacks even one OCR session, GitHub skips importing the unreviewed CSV. This is not a bearish stock verdict. A later research run can accept it without repeating OCR or human review **if** independently sourced history eventually covers those dates. The current collector requests roughly five months of historical candles at a time; it cannot automatically certify an entire 251-session screenshot history until a sufficiently long independent source is available.
+
+**Outcome C: mismatched row** — the entire unreviewed candidate is rejected from the auto-approval path. Fix or independently investigate conflicting dates/prices/volumes; no guesswork or score-based overriding. The existing human review function remains available for exceptional offline evidence but retains the stricter screenshot-origin alert warning.
+
+**Important distinction:** this is **automatic verification at the GitHub ingestion layer**, not an automatic change of `reviewed=false` in the Google Drive metadata. The Drive service account is intentionally **read-only**. The machine-readable GitHub outcome `auto_verified_independent_psx` means no approval click is required for research. It does not constitute an authorization to buy or sell securities.
+
 ## Queue cleanup upgrade — 24 October 2026
 
 GitHub source and offline tests now support a safe, unattended image lifecycle. The four Google Drive folders already exist inside the [PSX Wealth Agent inbox](https://drive.google.com/drive/folders/1kkQ7McRCcVDGZWHM8xrkN4-5dzMhT-ek):
@@ -17,7 +29,7 @@ After activation, run `scanVisionInbox` manually to test one batch. It handles a
 
 For a rejected page, open its `.failure.json` evidence file, correct the crop or source image, and move the corrected image from Needs Correction back into Screenshots. Simply reuploading identical bytes intentionally does **not** cause another paid OCR call. A fresh, corrected image must change the SHA-256 checksum.
 
-Consolidation creates `SYMBOL.vision.csv` and `SYMBOL.vision.review.json` **in the parent inbox**. New or changed evidence is always `reviewed=false`. Manually compare each row with EClear, then run the existing `approveSymbol('TICKER')` method through a parameter-free Apps Script wrapper (for example `function approveBNWM(){approveSymbol('BNWM')}`). Only a matching approved CSV and signed-off provenance can be imported by [PSX Wealth Research](https://github.com/zorays/Applications/actions/workflows/psx-wealth-agent.yml). Scheduled GitHub research does not place orders, and OCR-only signals are not an automatic buy or sell instruction.
+Consolidation creates `SYMBOL.vision.csv` and `SYMBOL.vision.review.json` **in the parent inbox**. New or changed evidence is always `reviewed=false`. Manually compare each row with EClear, then run the existing `approveSymbol('TICKER')` method through a parameter-free Apps Script wrapper (for example `function approveBNWM(){approveSymbol('BNWM')}`). Only a manually reviewed CSV or one whose full history independently matches separately fetched PSX candles can be imported by [PSX Wealth Research](https://github.com/zorays/Applications/actions/workflows/psx-wealth-agent.yml). Scheduled GitHub research does not place orders, and OCR-only signals are not an automatic buy or sell instruction.
 
 **What is already done:** Drive archive/quarantine folders created; GitHub source updated and mocked tests passing. **What is not yet live:** The connected tools cannot deploy Apps Script source into your existing standalone script, so the replacement-and-trigger step above remains necessary. We have not run the cloud pipeline against your private screenshots or your real Ollama key.
 
@@ -30,7 +42,7 @@ Consolidation creates `SYMBOL.vision.csv` and `SYMBOL.vision.review.json` **in t
 1. **Capture EClear OHLC History**: EClear Trade Cast is a logged-in Windows desktop application. Neither Ollama's cloud service nor Google Apps Script can independently click/scroll it or retrieve screenshots while your Windows computer is off. A small Windows screenshot-capture automation running on your machine, or a broker-approved data export/API, is still necessary to eliminate the manual screenshots. Do not share broker login credentials.
 2. The capture step uploads **only the cropped Date/Open/High/Low/Close/Volume history table** with filenames `SAZEW__page01.png`, `SAZEW__page02.png` etc. to the [Screenshots Drive folder](https://drive.google.com/drive/folders/1Swy8I2Q709D_vtXv29S8ooL6HAuO97Op). A screenshot of 13 visible rows contributes up to 13 rows—not an invented 250.
 3. A Google Apps Script checks the Drive folder **every 15 minutes** and calls **Ollama's hosted vision API** using your private `OLLAMA_API_KEY`. It records only *visible* rows, merges overlap, flags inconsistent OCR, and saves unapproved `SYMBOL.vision.csv` and matching `SYMBOL.vision.review.json` in the parent Drive inbox.
-4. After human verification of the extracted rows, run `approveSymbol('SAZEW')` using the Apps Script editor. Only then may GitHub import it.
+4. When no matching independent PSX reference is available, after human verification of the extracted rows, run `approveSymbol('SAZEW')` using the Apps Script editor. Alternatively, GitHub may import an unreviewed CSV after every OCR candle independently matches the separately fetched PSX reference; see the Automatic CSV verification section above.
 5. GitHub's existing `PSX Wealth Research` action combines manually reviewed OCR with free PSX history but **does not replace inconsistent exchange observations**. As a safety guard, screenshot-derived histories remain research-only for buy/sell email signals until independently verified by market source.
 
 ## One-time Google Apps Script setup

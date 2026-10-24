@@ -1,4 +1,4 @@
-"""Supplement validated PSX cache with HUMAN-REVIEWED OHLCV CSV from Drive.
+"""Supplement PSX cache with manually reviewed or INDEPENDENTLY VERIFIED OCR CSV.
 
 The screenshot-derived series is never privileged over trusted free PSX candles,
 never overwrites conflicting exchange candles, and creates provenance warnings
@@ -31,15 +31,18 @@ ALLOWED_SOURCES = {
 }
 
 
-def validate_reviewed_pair(csv_data: bytes, json_data: bytes, symbol: str) -> pd.DataFrame:
+def validate_reviewed_pair(csv_data: bytes, json_data: bytes, symbol: str,
+                           require_review: bool = True) -> pd.DataFrame:
     if len(json_data) > MAX_META_BYTES:
         raise ValueError("Provenance metadata is unexpectedly large")
     meta = json.loads(json_data)
     if (not isinstance(meta, dict) or
         meta.get("symbol") != symbol or
         meta.get("source") not in ALLOWED_SOURCES or
-        meta.get("reviewed") is not True or
-        not meta.get("reviewed_at") or
+        type(meta.get("reviewed")) is not bool or
+        (require_review and (meta.get("reviewed") is not True or
+                             not meta.get("reviewed_at"))) or
+        (meta.get("reviewed") is True and not meta.get("reviewed_at")) or
         not isinstance(meta.get("image_hashes"), list) or
         not meta["image_hashes"]):
         raise ValueError("Screenshot CSV is not manually approved")
@@ -70,6 +73,38 @@ def validate_reviewed_pair(csv_data: bytes, json_data: bytes, symbol: str) -> pd
     if int(meta.get("row_count", -1)) != len(parsed):
         raise ValueError("CSV row count changed after manual approval")
     return parsed.sort_values("date").reset_index(drop=True)
+
+
+def verify_against_independent_psx(supplemental: pd.DataFrame, reference_path: Path) -> int:
+    """Zero human clicks when EVERY OCR candle matches a separate PSX source.
+
+    This directory is created exclusively by incremental_collector.get_bars()
+    and direct bulk market updates, NEVER from a screenshot-backed main CSV.
+    Structural self-consistency or a second Ollama pass is not enough.
+    """
+    if not reference_path.is_file():
+        raise ValueError("No independent PSX historical reference for automatic approval")
+    reference_raw = pd.read_csv(reference_path)
+    reference = normalize(reference_raw)
+    if len(reference) != len(reference_raw) or reference["date"].duplicated().any():
+        raise ValueError("Independent reference contains invalid or duplicate sessions")
+    left = supplemental.copy()
+    left["date"] = pd.to_datetime(left["date"], errors="raise")
+    right = reference.set_index("date")
+    if not left["date"].isin(reference["date"]).all():
+        raise ValueError("Independent PSX reference does not cover every OCR date")
+    if left["date"].duplicated().any():
+        raise ValueError("OCR dates duplicated")
+    for row in left.itertuples(index=False):
+        expected = right.loc[row.date]
+        # An exact volume check and one paisa price tolerance account only
+        # for decimal conversion, not approximate visual similarity.
+        if any(abs(float(getattr(row, k)) - float(expected[k])) > 0.011
+               for k in ("open", "high", "low", "close")):
+            raise ValueError("OCR price differs from independently retrieved PSX history")
+        if abs(int(row.volume) - int(expected["volume"])) > 0:
+            raise ValueError("OCR volume differs from independently retrieved PSX history")
+    return len(left)
 
 
 def merge_trusted_and_ocr(existing: pd.DataFrame | None, supplemental: pd.DataFrame):
@@ -105,7 +140,16 @@ def merge_trusted_and_ocr(existing: pd.DataFrame | None, supplemental: pd.DataFr
 
 
 def import_one(data_dir: Path, symbol: str, csv_data: bytes, review_json: bytes) -> dict:
-    supplemental = validate_reviewed_pair(csv_data, review_json, symbol)
+    meta = json.loads(review_json)
+    manual_reviewed = meta.get("reviewed") is True
+    supplemental = validate_reviewed_pair(
+        csv_data, review_json, symbol, require_review=manual_reviewed)
+    verification = "manually_reviewed"
+    independent_count = 0
+    if not manual_reviewed:
+        independent_count = verify_against_independent_psx(
+            supplemental, data_dir / "independent_psx" / (symbol + ".csv"))
+        verification = "auto_verified_independent_psx"
     existing_path = data_dir / (symbol + ".csv")
     existing = None
     if existing_path.exists():
@@ -122,7 +166,8 @@ def import_one(data_dir: Path, symbol: str, csv_data: bytes, review_json: bytes)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(merged.to_csv(index=False), encoding="utf-8")
     return {"symbol": symbol, "merged_rows": len(merged), "ocr_new_dates": new_dates,
-            "conflicts_with_existing": conflicts, "ready_for_research": len(merged) >= 80}
+            "conflicts_with_existing": conflicts, "ready_for_research": len(merged) >= 80,
+            "verification": verification, "independently_matched_rows": independent_count}
 
 
 def best_matching_files(items: list[dict], watch: set[str]) -> dict[str, dict[str, dict]]:
@@ -175,13 +220,16 @@ def import_all(session, folder_id: str, data_dir: Path, watch: set[str]) -> dict
             states[symbol] = {
                 "ocr_dates": sorted(prev_dates),
                 "conflicts": result["conflicts_with_existing"],
-                "source": "approved_vision_screenshot_ocr",
-                "reviewed": True,
+                "source": "verified_vision_screenshot_ocr",
+                "reviewed": result["verification"] == "manually_reviewed",
+                "verification": result["verification"],
+                "independently_matched_rows": result["independently_matched_rows"],
             }
             results.append(result)
             print(f"{symbol}: Drive supplement {result['merged_rows']} history rows, "
                   f"{len(result['ocr_new_dates'])} new, "
-                  f"{result['conflicts_with_existing']} conflicting existing sessions")
+                  f"{result['conflicts_with_existing']} conflicting existing sessions, "
+                  f"verification={result['verification']}")
         except Exception as exc:
             skipped[symbol] = type(exc).__name__
             print(f"{symbol}: image-based supplement SKIPPED ({type(exc).__name__})")

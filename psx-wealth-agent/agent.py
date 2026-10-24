@@ -386,10 +386,16 @@ def main() -> int:
             result = analyze(symbol, raw, today=now.date())
             provenance = ocr_provenance.get(symbol, {})
             if isinstance(provenance, dict) and provenance.get("ocr_dates"):
-                result["warnings"].append("screenshot_derived_candles_need_independent_verification")
-                result["data_source"] = "PSX history supplemented with human-reviewed screenshot OCR"
+                mode = provenance.get("verification")
                 result["ocr_supplemented"] = True
-                # Technical research may be shown, but alerts must be suppressed.
+                result["ocr_verification"] = mode or "manually_reviewed"
+                if mode == "auto_verified_independent_psx":
+                    result["data_source"] = "OCR independently cross-checked against PSX historical OHLCV"
+                    result["independently_matched_rows"] = provenance.get("independently_matched_rows", 0)
+                else:
+                    result["warnings"].append("screenshot_derived_candles_need_independent_verification")
+                    result["data_source"] = "PSX history supplemented with human-reviewed screenshot OCR"
+                # Technical research can be shown but is never a 100-point buy verdict.
                 result["buy_approved"] = False
             items.append(result)
         except Exception as exc:
