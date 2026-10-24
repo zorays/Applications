@@ -79,6 +79,56 @@ class OcrCloudSafetyTests(unittest.TestCase):
         self.assertEqual(added, [])
         self.assertEqual(df.loc[20, "close"], trusted.loc[20, "close"])
 
+    def test_unreviewed_ocr_auto_verified_by_separate_psx_reference(self):
+        with TemporaryDirectory() as d:
+            folder = Path(d)
+            rows = screenshot_rows(90)
+            content, proof = pair(rows, reviewed=False)
+            independent = folder / "independent_psx"
+            independent.mkdir()
+            pd.DataFrame(rows).to_csv(independent / "SAZEW.csv", index=False)
+            result = import_one(folder, "SAZEW", content, proof)
+            self.assertEqual(result["verification"], "auto_verified_independent_psx")
+            self.assertEqual(result["independently_matched_rows"], 90)
+            self.assertTrue(result["ready_for_research"])
+            self.assertEqual(len(pd.read_csv(folder / "SAZEW.csv")), 90)
+
+    def test_unreviewed_ocr_cannot_self_verify_against_main_cache(self):
+        with TemporaryDirectory() as d:
+            folder = Path(d)
+            rows = screenshot_rows(90)
+            content, proof = pair(rows, reviewed=False)
+            pd.DataFrame(rows).to_csv(folder / "SAZEW.csv", index=False)
+            # A main cache can contain earlier OCR, so its price similarity
+            # must never count as an independent source.
+            with self.assertRaisesRegex(ValueError, "No independent PSX"):
+                import_one(folder, "SAZEW", content, proof)
+
+    def test_unreviewed_ocr_conflicts_never_approved(self):
+        with TemporaryDirectory() as d:
+            folder = Path(d)
+            rows = screenshot_rows(90)
+            content, proof = pair(rows, reviewed=False)
+            different = [dict(row) for row in rows]
+            different[20]["close"] += 1.0
+            independent = folder / "independent_psx"
+            independent.mkdir()
+            pd.DataFrame(different).to_csv(independent / "SAZEW.csv", index=False)
+            with self.assertRaisesRegex(ValueError, "OCR price differs"):
+                import_one(folder, "SAZEW", content, proof)
+            self.assertFalse((folder / "SAZEW.csv").exists())
+
+    def test_unreviewed_ocr_missing_reference_date_never_approved(self):
+        with TemporaryDirectory() as d:
+            folder = Path(d)
+            rows = screenshot_rows(90)
+            content, proof = pair(rows, reviewed=False)
+            independent = folder / "independent_psx"
+            independent.mkdir()
+            pd.DataFrame(rows[1:]).to_csv(independent / "SAZEW.csv", index=False)
+            with self.assertRaisesRegex(ValueError, "does not cover every OCR date"):
+                import_one(folder, "SAZEW", content, proof)
+
     def test_invalid_name_or_wrong_ticker_excluded(self):
         files = [
             {"name":"SAZEW.vision.csv", "mimeType":"text/csv", "modifiedTime":"2026-10-22T12:00Z"},
