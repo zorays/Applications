@@ -139,7 +139,8 @@ def merge_trusted_and_ocr(existing: pd.DataFrame | None, supplemental: pd.DataFr
     return merged, new_rows["date"].dt.strftime("%Y-%m-%d").tolist(), conflicts
 
 
-def import_one(data_dir: Path, symbol: str, csv_data: bytes, review_json: bytes) -> dict:
+def import_one(data_dir: Path, symbol: str, csv_data: bytes, review_json: bytes,
+               trust_broker_screenshots: bool = False) -> dict:
     meta = json.loads(review_json)
     manual_reviewed = meta.get("reviewed") is True
     supplemental = validate_reviewed_pair(
@@ -147,9 +148,19 @@ def import_one(data_dir: Path, symbol: str, csv_data: bytes, review_json: bytes)
     verification = "manually_reviewed"
     independent_count = 0
     if not manual_reviewed:
-        independent_count = verify_against_independent_psx(
-            supplemental, data_dir / "independent_psx" / (symbol + ".csv"))
-        verification = "auto_verified_independent_psx"
+        if trust_broker_screenshots and meta.get("source") == "ollama_cloud_vision_from_broker_screenshots":
+            if len(supplemental) < 80:
+                raise ValueError("Need at least 80 broker OCR sessions for unattended research")
+            gaps = supplemental["date"].diff().dt.days.dropna()
+            if (gaps > 10).any():
+                raise ValueError("Missing screenshot history: large calendar-date gap")
+            if (date.today() - supplemental["date"].max().date()).days > 10:
+                raise ValueError("Latest screenshot OCR price is stale")
+            verification = "owner_trusted_broker_ocr_research_only"
+        else:
+            independent_count = verify_against_independent_psx(
+                supplemental, data_dir / "independent_psx" / (symbol + ".csv"))
+            verification = "auto_verified_independent_psx"
     existing_path = data_dir / (symbol + ".csv")
     existing = None
     if existing_path.exists():
@@ -161,6 +172,8 @@ def import_one(data_dir: Path, symbol: str, csv_data: bytes, review_json: bytes)
         except (ValueError, OSError):
             raise ValueError("Existing cached series is invalid")
     merged, new_dates, conflicts = merge_trusted_and_ocr(existing, supplemental)
+    if verification == "owner_trusted_broker_ocr_research_only" and conflicts:
+        raise ValueError("Broker OCR differs from existing market history")
     # Never let OCR-only partial data masquerade as complete PSX history.
     out = existing_path if len(merged) >= 80 else data_dir / "ocr_partial" / (symbol + ".csv")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -195,7 +208,8 @@ def best_matching_files(items: list[dict], watch: set[str]) -> dict[str, dict[st
     return selected
 
 
-def import_all(session, folder_id: str, data_dir: Path, watch: set[str]) -> dict:
+def import_all(session, folder_id: str, data_dir: Path, watch: set[str],
+               trust_broker_screenshots: bool = False) -> dict:
     found = best_matching_files(list_drive_files(session, folder_id), watch)
     state_path = data_dir / "ocr_sources.json"
     try:
@@ -213,7 +227,8 @@ def import_all(session, folder_id: str, data_dir: Path, watch: set[str]) -> dict
         try:
             csv_data = download_csv(session, entry[".vision.csv"])
             meta_data = download_csv(session, entry[".vision.review.json"])
-            result = import_one(data_dir, symbol, csv_data, meta_data)
+            result = import_one(data_dir, symbol, csv_data, meta_data,
+                                trust_broker_screenshots=trust_broker_screenshots)
             prev = states.get(symbol, {})
             prev_dates = set(prev.get("ocr_dates", [])) if isinstance(prev, dict) else set()
             prev_dates.update(result["ocr_new_dates"])
@@ -266,7 +281,9 @@ def main() -> int:
             scopes=["https://www.googleapis.com/auth/drive.readonly"])
         reader = AuthorizedSession(credentials)
         summary = import_all(reader, folder, Path(args.output),
-                             set(read_watchlist(args.watchlist)))
+                             set(read_watchlist(args.watchlist)),
+                             trust_broker_screenshots=os.environ.get(
+                                 'TRUST_BROKER_SCREENSHOT_OCR', '').lower() == 'true')
         print(f"Drive OCR supplement complete: {len(summary['imported'])} symbol(s) updated, "
               f"{len(summary['skipped'])} rejected or pending approval")
     except Exception as exc:
