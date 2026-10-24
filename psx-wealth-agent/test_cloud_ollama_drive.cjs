@@ -23,6 +23,14 @@ class FakeFile {
   getMimeType(){return this.mime;}
   getLastUpdated(){return this.stamp;}
   setContent(value){this.bytes=Buffer.from(value); this.stamp=new Date();return this;}
+  moveTo(folder){
+    for(const parent of [root,...root.folders]){
+      const i=parent.files.indexOf(this);
+      if(i>=0)parent.files.splice(i,1);
+    }
+    folder.files.push(this);
+    return this;
+  }
 }
 const iter=a=>({index:0,hasNext(){return this.index<a.length},next(){return a[this.index++]}});
 class FakeFolder {
@@ -70,6 +78,13 @@ const context=vm.createContext({
     const imageText=Buffer.from(data.messages[0].images[0],"base64").toString();
     const first=imageText.startsWith("PAGE01");
     const changed=imageText.includes("UPDATED");
+    if(imageText==="API429") return {getResponseCode(){return 429},getContentText(){return "{}"}};
+    if(imageText==="BAD"){
+      return {getResponseCode(){return 200},
+        getContentText(){return JSON.stringify({message:{content:JSON.stringify({
+          symbol:"SAZEW",visible_rows:[{date:"2026-10-22",open:10,high:9,low:8,close:10,volume:50}]
+        })}})}};
+    }
     const rows=[{
       date:first ? "2026-10-21" : "2026-10-20",
       open:first?"1475":"1400",high:first?"1533":"1460",
@@ -115,7 +130,15 @@ inbox.files.push(new FakeFile("SAZEW__page01.png","PAGE01","image/png"));
 inbox.files.push(new FakeFile("SAZEW__page02.png","PAGE02","image/png"));
 const first=context.scanVisionInbox();
 assert.equal(first.changed,1);
+assert.equal(first.archived,2);
 assert.equal(calls,2);
+const archived=root.folders.find(x=>x.name==="Processed");
+const rejected=root.folders.find(x=>x.name==="Needs Correction");
+const proofFolder=root.folders.find(x=>x.name==="OCR Evidence");
+assert.equal(inbox.files.length,0);
+assert.equal(archived.files.length,2);
+assert.equal(rejected.files.length,0);
+assert.equal(proofFolder.files.filter(f=>f.name.endsWith(".part.json")).length,2);
 const csv=root.files.find(f=>f.name==="SAZEW.vision.csv");
 const meta=root.files.find(f=>f.name==="SAZEW.vision.review.json");
 assert.ok(csv&&meta);
@@ -129,9 +152,38 @@ context.scanVisionInbox();
 assert.equal(calls,2);
 assert.equal(JSON.parse(meta.bytes).reviewed,true);
 // Changed OCR input must cause a new request and revoke the old approval.
-inbox.files[0].setContent("PAGE01-UPDATED");
+const modified=archived.files.find(f=>f.name==="SAZEW__page01.png");
+modified.setContent("PAGE01-UPDATED");
+modified.moveTo(inbox);
 context.scanVisionInbox();
 assert.equal(calls,3);
 assert.equal(JSON.parse(meta.bytes).reviewed,false);
 assert.ok(csv.bytes.toString().includes("1501"));
-console.log("Cloud Ollama Apps Script tests passed: folder pickup, 2-page merge, API format, approval, caching, changed input revocation.");
+assert.equal(archived.files.length,2);
+assert.equal(inbox.files.length,0);
+// Failed OHLC is quarantined ONCE; evidence retains safe error and approval revoked.
+inbox.files.push(new FakeFile("SAZEW__page03.png","BAD","image/png"));
+const bad=context.scanVisionInbox();
+assert.equal(bad.quarantined,1);
+assert.equal(rejected.files.length,1);
+assert.equal(inbox.files.length,0);
+assert.equal(JSON.parse(meta.bytes).reviewed,false);
+assert.ok(proofFolder.files.some(f=>f.name.endsWith(".failure.json")));
+// Reupload a known-bad capture: no Ollama calls are spent on it.
+const beforeDuplicate=calls;
+inbox.files.push(new FakeFile("SAZEW__page03.png","BAD","image/png"));
+context.scanVisionInbox();
+assert.equal(calls,beforeDuplicate);
+assert.equal(rejected.files.length,2);
+// Transient HTTP429 must NOT quarantine; later execution may retry it.
+inbox.files.push(new FakeFile("SAZEW__page04.png","API429","image/png"));
+const outage=context.scanVisionInbox();
+assert.equal(outage.quarantined,0);
+assert.equal(inbox.files.length,1);
+assert.equal(rejected.files.length,2);
+// An archived page remains part of the consolidated CSV, although no images
+// remain in the inbox to read.
+const stableCsv=csv.bytes.toString();
+context.scanVisionInbox();
+assert.equal(csv.bytes.toString(),stableCsv);
+console.log("Cloud Ollama queue tests passed: archiving, evidence merge, OCR quarantine, duplicate suppression, transient retry and approval revocation.");
