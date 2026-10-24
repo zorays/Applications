@@ -14,6 +14,8 @@ const PSX = Object.freeze({
   FOLDER_ID: '1kkQ7McRCcVDGZWHM8xrkN4-5dzMhT-ek',
   IMAGE_FOLDER: 'Screenshots',
   PART_FOLDER: 'OCR Evidence',
+  PROCESSED_FOLDER: 'Processed',
+  REJECTED_FOLDER: 'Needs Correction',
   MODEL_FALLBACK: 'gemma4:cloud',
   PKT: 'Asia/Karachi',
   MAX_IMAGE_BYTES: 5 * 1024 * 1024,
@@ -40,6 +42,8 @@ function setupVisionCloud() {
   const root = DriveApp.getFolderById(PSX.FOLDER_ID);
   ensureSubfolder_(root, PSX.IMAGE_FOLDER);
   ensureSubfolder_(root, PSX.PART_FOLDER);
+  ensureSubfolder_(root, PSX.PROCESSED_FOLDER);
+  ensureSubfolder_(root, PSX.REJECTED_FOLDER);
   for (const trig of ScriptApp.getProjectTriggers()) {
     if (trig.getHandlerFunction() === 'scanVisionInbox') ScriptApp.deleteTrigger(trig);
   }
@@ -61,142 +65,248 @@ function scanVisionInbox() {
   }
 }
 
+
+/**
+ * Durable image lifecycle:
+ * Screenshots -> validation -> Processed (success) / Needs Correction (bad OCR).
+ * All OCR evidence stays in OCR Evidence, independent of input file location.
+ * Transient API/Drive failures remain queued for a later trigger.
+ * Nothing is permanently deleted and NO OCR result is auto-approved.
+ */
 function scanVisionInbox_() {
   const root = DriveApp.getFolderById(PSX.FOLDER_ID);
   const images = ensureSubfolder_(root, PSX.IMAGE_FOLDER);
   const evidence = ensureSubfolder_(root, PSX.PART_FOLDER);
+  const processed = ensureSubfolder_(root, PSX.PROCESSED_FOLDER);
+  const rejected = ensureSubfolder_(root, PSX.REJECTED_FOLDER);
   const indexed = [];
   const it = images.getFiles();
   while (it.hasNext()) {
     const file = it.next();
     const match = file.getName().match(PSX.NAME_PATTERN);
-    if (!match) continue;
+    if (!match) {
+      console.error('Quarantining improperly named screenshot (expected SYMBOL__pageNN.png).');
+      try { file.moveTo(rejected); } catch (e) { console.error('Cannot move invalid filename: ' + safeVisionFailure_(e)); }
+      continue;
+    }
     indexed.push({file:file, symbol:match[1].toUpperCase(),
                   stamp:file.getLastUpdated().getTime()});
-    if (indexed.length > 600) {
-      throw new Error('More than 600 screenshots: archive old ones before continuing.');
-    }
+    if (indexed.length > 600) throw new Error('Screenshots queue exceeds 600 files');
   }
-  indexed.sort((a,b) => a.stamp - b.stamp || a.file.getName().localeCompare(b.file.getName()));
-  let attempted = 0;
-  const changed = new Set();
-  const allBySymbol = {};
-  for (const entry of indexed) {
-    (allBySymbol[entry.symbol] || (allBySymbol[entry.symbol] = [])).push(entry);
-    const file = entry.file;
-    const evidenceName = entry.symbol + '__' + file.getId() + '.part.json';
-    const previousFile = findOne_(evidence, evidenceName);
-    let prior = null;
-    if (previousFile) {
-      try { prior = JSON.parse(previousFile.getBlob().getDataAsString('UTF-8')); }
-      catch (_) { prior = null; }
-    }
-    // Check checksum on each candidate, including files that were replaced.
-    let bytes;
+  indexed.sort((a,b) => a.stamp - b.stamp ||
+    a.file.getName().localeCompare(b.file.getName()));
+
+  // Build a proof index ONCE; archived originals must still contribute to CSV.
+  const partsBySymbol = {};
+  const goodFingerprints = new Set();
+  const badFingerprints = new Set();
+  const proofs = evidence.getFiles();
+  while (proofs.hasNext()) {
+    const f = proofs.next(), name = f.getName();
+    if (!/\.(part|failure)\.json$/.test(name)) continue;
     try {
-      if (file.getSize() > PSX.MAX_IMAGE_BYTES) {
-        console.error('OCR skip oversized image: ' + file.getName());
-        continue;
-      }
-      bytes = file.getBlob().getBytes();
-      if (bytes.length > PSX.MAX_IMAGE_BYTES) continue;
-    } catch (err) {
-      console.error('Could not read screenshot ' + file.getName() + ': ' + String(err));
-      continue;
-    }
-    const sha = sha256_(bytes);
-    if (prior && prior.imageSha256 === sha && prior.imageName === file.getName() &&
-        Array.isArray(prior.rows)) {
-      continue;
-    }
-    if (attempted >= PSX.MAX_PER_TICK) continue;
-    attempted++;
-    let stage = 'ollama_api';
-    try {
-      const reply = callOllama_(bytes, file.getMimeType(), entry.symbol, file.getName());
-      stage = 'ticker_check';
-      if (reply.symbol.toUpperCase() !== entry.symbol) throw new Error('Image ticker mismatch');
-      stage = 'ohlcv_validation';
-      const clean = validateRows_(reply.visible_rows, PSX.MAX_SCREEN_ROWS);
-      verifyScreenshotAnchor_(file.getName(), clean);
-      // Empty crops are not stored; image can be retried after correction.
-      if (!clean.length) throw new Error('No legible full OHLC rows found');
-      stage = 'saving_evidence';
-      const part = {
-        symbol: entry.symbol, imageId: file.getId(), imageName:file.getName(),
-        imageSha256:sha, rows:clean, model: model_(),
-        extractedAt: new Date().toISOString()
-      };
-      replaceText_(evidence, evidenceName, JSON.stringify(part), 'application/json');
-      changed.add(entry.symbol);
-      console.log('Extracted ' + clean.length + ' visible candles for ' + entry.symbol);
-    } catch (err) {
-      // Safe diagnostics: never log API keys, request bodies, images, or model output.
-      const reason = safeVisionFailure_(err);
-      console.error('Image ' + file.getName() + ': extraction failed at ' + stage + ' — ' + reason);
-      if (/quota|429|RESOURCE_EXHAUSTED/i.test(reason)) break;
+      const p = JSON.parse(f.getBlob().getDataAsString('UTF-8'));
+      if (!p || !/^[A-Z][A-Z0-9]{1,11}$/.test(p.symbol || '') ||
+          !/^[a-f0-9]{64}$/.test(p.imageSha256 || '') ||
+          typeof p.imageName !== 'string') continue;
+      const fingerprint = visionFingerprint_(p.symbol, p.imageName, p.imageSha256);
+      if (name.endsWith('.part.json') && Array.isArray(p.rows)) {
+        (partsBySymbol[p.symbol] || (partsBySymbol[p.symbol]=[])).push(p);
+        goodFingerprints.add(fingerprint);
+      } else if (name.endsWith('.failure.json')) badFingerprints.add(fingerprint);
+    } catch (_) {
+      console.error('Ignoring malformed stored OCR evidence.');
     }
   }
 
-  // Export one consolidated CSV per changed symbol. For unchanged symbols,
-  // do not regenerate or silently revoke an existing human approval.
+  let attempted = 0, archived = 0, quarantined = 0, deferred = 0;
+  const changed = new Set();
+  for (const entry of indexed) {
+    const file = entry.file;
+    const symbol = entry.symbol;
+    let bytes, sha;
+    try {
+      if (file.getSize() > PSX.MAX_IMAGE_BYTES) {
+        quarantineFile_(file,rejected,evidence,symbol,'file_size',
+                        'Screenshot exceeds size limit',null);
+        quarantined++;
+        continue;
+      }
+      bytes = file.getBlob().getBytes();
+      if (bytes.length > PSX.MAX_IMAGE_BYTES) {
+        quarantineFile_(file,rejected,evidence,symbol,'file_size',
+                        'Screenshot exceeds size limit',null);
+        quarantined++;
+        continue;
+      }
+      sha = sha256_(bytes);
+    } catch (err) {
+      console.error('Deferred Drive read for ' + file.getName() + ': ' + safeVisionFailure_(err));
+      deferred++;
+      continue;
+    }
+    const fingerprint = visionFingerprint_(symbol,file.getName(),sha);
+    if (goodFingerprints.has(fingerprint)) {
+      try {
+        file.moveTo(processed);
+        archived++;
+        // Recover CSV when an earlier execution saved proof but failed to consolidate.
+        if (!findOne_(root,symbol + '.vision.csv')) changed.add(symbol);
+      } catch (e) {
+        deferred++;
+        console.error('Evidence exists but archival failed: ' + safeVisionFailure_(e));
+      }
+      continue;
+    }
+    if (badFingerprints.has(fingerprint)) {
+      try { file.moveTo(rejected); quarantined++; }
+      catch (e) { deferred++; console.error('Known rejection move failed: ' + safeVisionFailure_(e)); }
+      continue;
+    }
+    if (attempted >= PSX.MAX_PER_TICK) { deferred++; continue; }
+    attempted++;
+    let stage = 'ollama_api';
+    try {
+      const reply = callOllama_(bytes,file.getMimeType(),symbol,file.getName());
+      stage = 'ticker_check';
+      if (reply.symbol.toUpperCase() !== symbol) throw new Error('Image ticker mismatch');
+      stage = 'ohlcv_validation';
+      const clean = validateRows_(reply.visible_rows, PSX.MAX_SCREEN_ROWS);
+      verifyScreenshotAnchor_(file.getName(),clean);
+      if (!clean.length) throw new Error('No legible full OHLC rows found');
+      stage = 'saving_evidence';
+      const part = {
+        symbol:symbol, imageId:file.getId(), imageName:file.getName(),
+        imageSha256:sha, rows:clean, model:model_(),
+        extractedAt:new Date().toISOString()
+      };
+      replaceText_(evidence,symbol + '__' + file.getId() + '.part.json',
+                   JSON.stringify(part),'application/json');
+      goodFingerprints.add(fingerprint);
+      (partsBySymbol[symbol] || (partsBySymbol[symbol]=[])).push(part);
+      changed.add(symbol);
+      try { file.moveTo(processed); archived++; }
+      catch (e) { deferred++; console.error('Saved evidence; move retry next run: ' + safeVisionFailure_(e)); }
+      console.log('Validated ' + clean.length + ' visible candles for ' + symbol);
+    } catch (err) {
+      const reason = safeVisionFailure_(err);
+      console.error('Image ' + file.getName() + ': ' + stage + ' — ' + reason);
+      if (isPermanentVisionFailure_(stage,err)) {
+        try {
+          quarantineFile_(file,rejected,evidence,symbol,stage,reason,sha);
+          badFingerprints.add(fingerprint);
+          quarantined++;
+          revokeSymbolReview_(root,symbol,'Invalid replacement screenshot requires manual review');
+        } catch (e) {
+          deferred++;
+          console.error('Quarantine write/move failed; will retry: ' + safeVisionFailure_(e));
+        }
+      } else {
+        deferred++;
+        // Quotas and authentication failures should not consume remaining images.
+        if (/429|401|403|quota|missing.*key/i.test(reason)) break;
+      }
+    }
+  }
+
+  // Preserve previously archived pages. New screenshots with an identical
+  // page name supersede earlier OCR proof; conflicts across pages fail closed.
+  for (const symbol of Object.keys(partsBySymbol)) {
+    if (!findOne_(root,symbol + '.vision.csv')) changed.add(symbol);
+  }
+  let prepared = 0;
   for (const symbol of changed) {
     try {
-      const currentImages = allBySymbol[symbol] || [];
-      const parts = [];
-      for (const item of currentImages) {
-        const partFile = findOne_(evidence, symbol + '__' + item.file.getId() + '.part.json');
-        if (!partFile) continue;
-        const p = JSON.parse(partFile.getBlob().getDataAsString('UTF-8'));
-        // A previously extracted file may have been replaced while a batch
-        // was processing. Do not silently include mismatched data.
-        const liveHash = sha256_(item.file.getBlob().getBytes());
-        if (p.symbol === symbol && p.imageSha256 === liveHash &&
-            p.imageName === item.file.getName() && Array.isArray(p.rows)) parts.push(p);
+      const byName = {};
+      for (const p of partsBySymbol[symbol] || []) {
+        const old = byName[p.imageName];
+        if (!old || String(old.extractedAt || '') < String(p.extractedAt || '')) {
+          byName[p.imageName] = p;
+        }
       }
+      const parts = Object.keys(byName).sort().map(k=>byName[k]);
       if (!parts.length) continue;
       const merged = mergeParts_(parts);
       if (!merged.length) continue;
       const csv = toCsv_(merged);
-      const checksum = sha256_(Utilities.newBlob(csv, 'text/csv').getBytes());
+      const checksum = sha256_(Utilities.newBlob(csv,'text/csv').getBytes());
       const filename = symbol + '.vision.csv';
       const metaName = symbol + '.vision.review.json';
-      const oldCsv = findOne_(root, filename);
-      const oldMetaFile = findOne_(root, metaName);
+      const oldCsv = findOne_(root,filename);
+      const oldMetaFile = findOne_(root,metaName);
       let priorMeta = null;
       if (oldMetaFile) {
         try { priorMeta = JSON.parse(oldMetaFile.getBlob().getDataAsString('UTF-8')); }
         catch (_) {}
       }
-      const currentHashes = parts.map(x=>x.imageSha256).sort();
-      const unchanged = oldCsv && priorMeta &&
-          priorMeta.csv_sha256 === checksum &&
-          priorMeta.row_count === merged.length &&
-          Array.isArray(priorMeta.image_hashes) &&
-          JSON.stringify(priorMeta.image_hashes.slice().sort()) ===
-              JSON.stringify(currentHashes);
-      if (!unchanged) replaceText_(root, filename, csv, 'text/csv');
+      const hashes = parts.map(p=>p.imageSha256).sort();
+      const unchanged = Boolean(oldCsv && priorMeta &&
+        priorMeta.csv_sha256 === checksum && priorMeta.row_count === merged.length &&
+        Array.isArray(priorMeta.image_hashes) &&
+        JSON.stringify(priorMeta.image_hashes.slice().sort()) === JSON.stringify(hashes));
+      if (!unchanged) replaceText_(root,filename,csv,'text/csv');
       const approved = Boolean(unchanged && priorMeta.reviewed === true);
-      const metadata = {
-        symbol:symbol, source:'ollama_cloud_vision_from_broker_screenshots',
-        extractor:'ollama_cloud_vision', csv_sha256:checksum,
-        row_count:merged.length, reviewed:approved,
-        reviewed_at: approved ? priorMeta.reviewed_at : null,
-        image_hashes: currentHashes,
-        generated_at: new Date().toISOString(),
-        note:'OCR transcription is NOT buy/sell authorization. Check every row before approval.'
-      };
-      replaceText_(root, metaName, JSON.stringify(metadata, null, 2), 'application/json');
+      replaceText_(root,metaName,JSON.stringify({
+        symbol:symbol,source:'ollama_cloud_vision_from_broker_screenshots',
+        extractor:'ollama_cloud_vision',csv_sha256:checksum,row_count:merged.length,
+        reviewed:approved,reviewed_at:approved ? priorMeta.reviewed_at : null,
+        image_hashes:hashes,generated_at:new Date().toISOString(),
+        note:'OCR needs human row-by-row verification; never auto approve trading.'
+      },null,2),'application/json');
+      prepared++;
       console.log('Prepared ' + filename + ': ' + merged.length +
-                  ' unique rows, verified=' + approved);
-    } catch (err) {
-      console.error('Skipped consolidation for ' + symbol + ': ' + String(err).slice(0,180));
+                  ' historical candles; reviewed=' + approved);
+    } catch (e) {
+      revokeSymbolReview_(root,symbol,'Evidence merge failed');
+      console.error('Cannot consolidate ' + symbol + ': ' + safeVisionFailure_(e));
     }
   }
-  console.log('OCR cycle: checked ' + indexed.length + ' images; inferred ' +
-              attempted + ' new/changed crops; wrote ' + changed.size + ' symbol candidates.');
-  return {images:indexed.length, attempted:attempted, changed:changed.size};
+  console.log('OCR queue: incoming=' + indexed.length + ', calls=' + attempted +
+    ', archived=' + archived + ', quarantined=' + quarantined +
+    ', deferred=' + deferred + ', candidates=' + prepared);
+  return {images:indexed.length,attempted:attempted,archived:archived,
+          quarantined:quarantined,deferred:deferred,changed:prepared};
 }
+
+function visionFingerprint_(symbol,name,sha) {
+  return symbol + '|' + name + '|' + sha;
+}
+function isPermanentVisionFailure_(stage,error) {
+  if (stage === 'ticker_check' || stage === 'ohlcv_validation') return true;
+  // Malformed JSON is an OCR formatting problem, not a transport failure.
+  return stage === 'ollama_api' && error &&
+    (error.name === 'SyntaxError' ||
+     /Invalid Ollama text content|Malformed Ollama response JSON/.test(String(error.message || '')));
+}
+function quarantineFile_(file,folder,evidence,symbol,stage,reason,sha) {
+  const record = {
+    symbol:symbol,imageId:file.getId(),imageName:file.getName(),
+    imageSha256:sha || '',stage:stage,reason:reason,
+    failedAt:new Date().toISOString(),status:'NEEDS_HUMAN_CORRECTION'
+  };
+  // Failure record FIRST: retry and auditing survive a failed moveTo().
+  replaceText_(evidence,symbol + '__' + file.getId() + '.failure.json',
+               JSON.stringify(record,null,2),'application/json');
+  file.moveTo(folder);
+  console.log('Quarantined ' + file.getName() + ': ' + reason);
+}
+function revokeSymbolReview_(root,symbol,reason) {
+  const f = findOne_(root,symbol + '.vision.review.json');
+  if (!f) return;
+  try {
+    const meta=JSON.parse(f.getBlob().getDataAsString('UTF-8'));
+    if (meta.reviewed) {
+      meta.reviewed=false;
+      meta.reviewed_at=null;
+      meta.review_revoked_reason=reason;
+      replaceText_(root,symbol + '.vision.review.json',
+                   JSON.stringify(meta,null,2),'application/json');
+    }
+  } catch (_) { console.error('Could not revoke approval for ' + symbol); }
+}
+
+// Recheck quarantined screenshot only when the user intentionally returns a
+// corrected/cropped file into Screenshots. No automatic retry of bad OCR.
 
 // Explicit one-time user action after comparing ALL rows to EClear.
 function approveSymbol(symbol) {
