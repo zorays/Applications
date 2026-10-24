@@ -1,6 +1,29 @@
 # PSX EClear screenshots → Ollama Cloud → Google Drive → GitHub
 
-**Pipeline status (October 23, 2026):** GitHub cloud OCR script and mocked tests are implemented. The Screenshots Google Drive folder is configured and **18 DSIL price-history screenshot files (DSIL__page01.png through DSIL__page18.png) have been uploaded and verified in Drive**. **The hosted Ollama API key and Google Apps Script permissions/trigger are not yet configured.** No key is stored in GitHub. Previously uploaded captures can be processed without recapturing them, but further automatically capturing the Windows EClear screen requires a separate desktop agent.
+## Queue cleanup upgrade — 24 October 2026
+
+GitHub source and offline tests now support a safe, unattended image lifecycle. The four Google Drive folders already exist inside the [PSX Wealth Agent inbox](https://drive.google.com/drive/folders/1kkQ7McRCcVDGZWHM8xrkN4-5dzMhT-ek):
+
+| Folder | Purpose |
+|---|---|
+| [Screenshots](https://drive.google.com/drive/folders/1Swy8I2Q709D_vtXv29S8ooL6HAuO97Op) | Incoming cropped OHLCV screenshots named `SYMBOL__pageNN.png` |
+| [Processed](https://drive.google.com/drive/folders/1UbGV3OeeB9owcfOrLlZt2VdYtk9ejowJ) | Valid screenshot originals archived after proof is saved |
+| [Needs Correction](https://drive.google.com/drive/folders/1OatGZhRuiw71fw7khbAPW7V0u-AQbVJR) | Invalid OHLCV, impossible dates or malformed vision output; original preserved |
+| [OCR Evidence](https://drive.google.com/drive/folders/1RVQIndzn5dxd5cRlVZGFM9YDUQNPHq3W) | Per-image `.part.json` and `.failure.json` evidence; NEVER clear automatically |
+
+**Critical live activation step:** GitHub cannot change the installed `Code.gs` of your existing Google Apps Script project with the connected GitHub/Drive permissions. Open your existing **PSX Wealth Agent - Ollama Vision** project, replace the **entire Code.gs** with the updated [cloud_ollama_drive.gs](https://github.com/zorays/Applications/blob/master/psx-wealth-agent/cloud_ollama_drive.gs), and save. Your existing Script Properties (including `OLLAMA_API_KEY`) should be retained. Select **setupVisionCloud**, Run, and allow requested permissions. This reinstalls the 15-minute `scanVisionInbox` trigger. You **do not** need to Deploy as a Web App.
+
+After activation, run `scanVisionInbox` manually to test one batch. It handles at most **3 new vision requests per run**. Existing valid proof files are read from OCR Evidence even if their screenshots have moved to Processed; moving images never removes their source candles from the merged CSV. Previously rejected, identical screenshots do not incur more Ollama API calls. Transport, Drive and API quota failures are deferred and remain in Screenshots for subsequent attempts, rather than being misclassified as invalid market data.
+
+For a rejected page, open its `.failure.json` evidence file, correct the crop or source image, and move the corrected image from Needs Correction back into Screenshots. Simply reuploading identical bytes intentionally does **not** cause another paid OCR call. A fresh, corrected image must change the SHA-256 checksum.
+
+Consolidation creates `SYMBOL.vision.csv` and `SYMBOL.vision.review.json` **in the parent inbox**. New or changed evidence is always `reviewed=false`. Manually compare each row with EClear, then run the existing `approveSymbol('TICKER')` method through a parameter-free Apps Script wrapper (for example `function approveBNWM(){approveSymbol('BNWM')}`). Only a matching approved CSV and signed-off provenance can be imported by [PSX Wealth Research](https://github.com/zorays/Applications/actions/workflows/psx-wealth-agent.yml). Scheduled GitHub research does not place orders, and OCR-only signals are not an automatic buy or sell instruction.
+
+**What is already done:** Drive archive/quarantine folders created; GitHub source updated and mocked tests passing. **What is not yet live:** The connected tools cannot deploy Apps Script source into your existing standalone script, so the replacement-and-trigger step above remains necessary. We have not run the cloud pipeline against your private screenshots or your real Ollama key.
+
+---
+
+**Prior deployment note (October 23, 2026):** This paragraph describes the original setup before the queue lifecycle upgrade. Refer to the October 24 section above for the latest source and activation requirements.
 
 ## Your actual flow
 
