@@ -6,7 +6,7 @@
 
 **Outcome A: `auto_verified_independent_psx`** — an unreviewed `SYMBOL.vision.csv` that independently matches on **100% of its rows** is automatically included in GitHub research; no human approval is required. `ocr_import_summary.json`, `ocr_sources.json` and the verdict report record verification status. The independent archive is collected gradually under the existing 4-history-backfills/day request budget.
 
-**Outcome B: pending reference** — if independent PSX data lacks even one OCR session, GitHub skips importing the unreviewed CSV. This is not a bearish stock verdict. When future backfills eventually cover it, a later research run can accept it without repeating OCR or human review.
+**Outcome B: pending reference** — if independent PSX data lacks even one OCR session, GitHub skips importing the unreviewed CSV. This is not a bearish stock verdict. A later research run can accept it without repeating OCR or human review **if** independently sourced history eventually covers those dates. The current collector requests roughly five months of historical candles at a time; it cannot automatically certify an entire 251-session screenshot history until a sufficiently long independent source is available.
 
 **Outcome C: mismatched row** — the entire unreviewed candidate is rejected from the auto-approval path. Fix or independently investigate conflicting dates/prices/volumes; no guesswork or score-based overriding. The existing human review function remains available for exceptional offline evidence but retains the stricter screenshot-origin alert warning.
 
