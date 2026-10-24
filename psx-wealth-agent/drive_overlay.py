@@ -235,7 +235,9 @@ def import_all(session, folder_id: str, data_dir: Path, watch: set[str],
             states[symbol] = {
                 "ocr_dates": sorted(prev_dates),
                 "conflicts": result["conflicts_with_existing"],
-                "source": "verified_vision_screenshot_ocr",
+                "source": ("owner_trusted_broker_ocr" if result["verification"] ==
+                           "owner_trusted_broker_ocr_research_only" else
+                           "verified_vision_screenshot_ocr"),
                 "reviewed": result["verification"] == "manually_reviewed",
                 "verification": result["verification"],
                 "independently_matched_rows": result["independently_matched_rows"],
