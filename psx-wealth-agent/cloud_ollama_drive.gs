@@ -84,6 +84,12 @@ function scanVisionInbox_() {
   while (it.hasNext()) {
     const file = it.next();
     const match = file.getName().match(PSX.NAME_PATTERN);
+    if (!match && /^ARCHIVE_/i.test(file.getName())) {
+      // An operator-saved full-screen original is a backup, not an OCR crop.
+      try { file.moveTo(processed); }
+      catch (e) { console.error('Cannot archive original backup: ' + safeVisionFailure_(e)); }
+      continue;
+    }
     if (!match) {
       console.error('Quarantining improperly named screenshot (expected SYMBOL__pageNN.png).');
       try { file.moveTo(rejected); } catch (e) { console.error('Cannot move invalid filename: ' + safeVisionFailure_(e)); }
@@ -95,6 +101,9 @@ function scanVisionInbox_() {
   }
   indexed.sort((a,b) => a.stamp - b.stamp ||
     a.file.getName().localeCompare(b.file.getName()));
+  // Oldest per symbol first; rotate through symbols so one broken batch
+  // cannot monopolize the three hosted OCR requests in every cycle.
+  const fairQueue = interleaveBySymbol_(indexed);
 
   // Build a proof index ONCE; archived originals must still contribute to CSV.
   const partsBySymbol = {};
@@ -121,7 +130,7 @@ function scanVisionInbox_() {
 
   let attempted = 0, archived = 0, quarantined = 0, deferred = 0;
   const changed = new Set();
-  for (const entry of indexed) {
+  for (const entry of fairQueue) {
     const file = entry.file;
     const symbol = entry.symbol;
     let bytes, sha;
@@ -268,6 +277,22 @@ function scanVisionInbox_() {
           quarantined:quarantined,deferred:deferred,changed:prepared};
 }
 
+function interleaveBySymbol_(entries) {
+  const queues = {};
+  const order = [];
+  for (const e of entries) {
+    if (!queues[e.symbol]) { queues[e.symbol] = []; order.push(e.symbol); }
+    queues[e.symbol].push(e);
+  }
+  const result = [];
+  let remaining = entries.length;
+  while (remaining > 0) {
+    for (const symbol of order) {
+      if (queues[symbol].length) { result.push(queues[symbol].shift()); remaining--; }
+    }
+  }
+  return result;
+}
 function visionFingerprint_(symbol,name,sha) {
   return symbol + '|' + name + '|' + sha;
 }

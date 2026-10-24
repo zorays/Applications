@@ -122,6 +122,11 @@ assert.equal(context.safeVisionFailure_(new Error("No legible full OHLC rows fou
 assert.equal(context.safeVisionFailure_(new Error("Ollama Cloud HTTP 401")), "Ollama Cloud HTTP 401");
 assert.equal(context.safeVisionFailure_(new SyntaxError("Unexpected model text")), "Ollama returned non-JSON or malformed JSON");
 assert.equal(context.safeVisionFailure_(new Error("TOKEN_API_KEY_SENSITIVE")), "Unexpected processing error (Error)");
+const fair=context.interleaveBySymbol_([
+  {symbol:"DSIL",id:1},{symbol:"DSIL",id:2},{symbol:"DSIL",id:3},
+  {symbol:"BNWM",id:4},{symbol:"BNWM",id:5}
+]);
+assert.deepEqual(Array.from(fair, x=>x.id),[1,4,2,5,3]);
 context.setupVisionCloud();
 assert.equal(triggering,1);
 const inbox=root.folders.find(x=>x.name==="Screenshots");
