@@ -93,7 +93,7 @@ class EClearResearchTests(unittest.TestCase):
             path = Path(temp)
             path.mkdir(exist_ok=True)
             old = frame.copy()
-            old.loc[1, "close"] += 2.5
+            old.loc[1, "close"] += 0.5
             old.to_csv(path / "NML.csv", index=False)
             with self.assertRaisesRegex(ValueError, "conflicts"):
                 overlay_one(path, "NML", raw, meta, date(2026, 10, 28))
