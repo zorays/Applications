@@ -1,0 +1,136 @@
+name: PSX NML DPS Research
+
+on:
+  push:
+    paths:
+      - "psx-wealth-agent/watchlist.txt"
+      - "psx-wealth-agent/psx_dps_feed.py"
+      - "psx-wealth-agent/test_psx_dps_feed.py"
+      - ".github/workflows/psx-nml-dps-research.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nml-dps-probe:
+    name: Verify NML through public PSX DPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: psx-wealth-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install required dependencies and pinned PSX-DPS client
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install "git+https://github.com/umairsandhu/psx-dps@58944679119cb65c076cbafe96b5a0a1f516969d"
+      - name: Confirm NML is on the active research watchlist
+        run: |
+          python - <<'PY'
+          from psx_dps_feed import read_watchlist
+          items = read_watchlist("watchlist.txt")
+          assert "NML" in items, "NML missing from watchlist"
+          print("Watchlist verified:", len(items), "stocks; NML present")
+          PY
+      - name: Fetch NML daily historical OHLCV from public PSX DPS
+        id: fetch
+        continue-on-error: true
+        run: |
+          mkdir -p data reports
+          python psx_dps_feed.py --symbols NML --months 5 --output data
+      - name: Calculate NML technical verdict when valid data exists
+        if: steps.fetch.outcome == 'success'
+        continue-on-error: true
+        run: python agent.py --source csv --symbols NML --data-dir data --output reports
+      - name: Render DPS availability, OHLCV and technical result
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          import pandas as pd
+
+          root = Path("reports")
+          root.mkdir(exist_ok=True)
+          csv = Path("data/NML.csv")
+          outcome = {
+              "symbol": "NML",
+              "data_source": "public_psx_dps_history_by_month",
+              "generated_at_pakistan": datetime.now(ZoneInfo("Asia/Karachi")).isoformat(),
+              "status": "UNAVAILABLE",
+              "historical_candles": 0,
+              "technical_result": None,
+              "trading_automation_enabled": False
+          }
+          errors = Path("data/fetch_errors.json")
+          if errors.exists():
+              try:
+                  outcome["fetch_error"] = json.loads(errors.read_text()).get("NML")
+              except Exception:
+                  outcome["fetch_error"] = "Cannot parse source error report"
+          if csv.exists():
+              frame = pd.read_csv(csv)
+              if len(frame) >= 80:
+                  last = frame.iloc[-1]
+                  outcome.update({
+                      "status": "DATA_AVAILABLE",
+                      "historical_candles": len(frame),
+                      "first_session": str(frame.iloc[0]["date"]),
+                      "last_session": str(last["date"]),
+                      "last_open": float(last["open"]),
+                      "last_high": float(last["high"]),
+                      "last_low": float(last["low"]),
+                      "last_close": float(last["close"]),
+                      "last_volume": int(last["volume"])
+                  })
+          verdict_file = root / "verdict.json"
+          if verdict_file.exists():
+              try:
+                  verdict = json.loads(verdict_file.read_text())
+                  items = verdict.get("results") or []
+                  if items:
+                      outcome["technical_result"] = items[0]
+                  if verdict.get("errors"):
+                      outcome["analysis_errors"] = verdict["errors"]
+              except Exception:
+                  outcome["analysis_errors"] = "Research report could not be decoded"
+          (root / "nml-dps-result.json").write_text(json.dumps(outcome, indent=2))
+          md = [
+              "# NML: PSX DPS direct historical-data check",
+              "",
+              "Status: " + outcome["status"],
+              "Valid sessions: " + str(outcome["historical_candles"]),
+              "Data source: unofficial public PSX DPS (no order access)",
+          ]
+          if "last_session" in outcome:
+              md += [
+                  "Most recent candle: " + outcome["last_session"],
+                  "OHLCV: " + " / ".join(str(outcome[k]) for k in (
+                      "last_open", "last_high", "last_low", "last_close", "last_volume"))
+              ]
+          if outcome.get("fetch_error"):
+              md.append("Fetch error: " + str(outcome["fetch_error"]))
+          md += ["", "No automatic trading, no full fundamental buy approval."]
+          (root / "nml-dps-result.md").write_text("\n".join(md) + "\n")
+          print("\n".join(md))
+          print("DPS_JSON_RESULT=" + json.dumps(outcome, separators=(',', ':')))
+          PY
+      - name: Upload NML DPS report and research verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nml-dps-research
+          path: |
+            psx-wealth-agent/reports/nml-dps-result.json
+            psx-wealth-agent/reports/nml-dps-result.md
+            psx-wealth-agent/reports/verdict.json
+            psx-wealth-agent/reports/verdict.md
+          if-no-files-found: warn
+          retention-days: 14
