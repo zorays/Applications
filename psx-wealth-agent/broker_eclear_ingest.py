@@ -92,7 +92,10 @@ def overlay_one(data_dir: Path, symbol: str, csv_data: bytes, audit_data: bytes,
     incoming = verify_pair(symbol, csv_data, audit_data, today=today)
     dest = data_dir / (symbol + ".csv")
     if dest.is_file():
-        trusted = normalize(pd.read_csv(dest))
+        prior_raw = pd.read_csv(dest)
+        trusted = normalize(prior_raw)
+        if len(trusted) != len(prior_raw) or trusted["date"].duplicated().any():
+            raise ValueError("Existing PSX history is malformed")
         overlap = incoming.merge(trusted, on="date", suffixes=("_eclear", "_other"))
         for row in overlap.itertuples(index=False):
             for field in ("open", "high", "low", "close", "volume"):
