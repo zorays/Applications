@@ -6,6 +6,8 @@ on:
       - "psx-wealth-agent/watchlist.txt"
       - "psx-wealth-agent/psx_dps_feed.py"
       - "psx-wealth-agent/test_psx_dps_feed.py"
+      - "psx-wealth-agent/nml_eclear_ingest.py"
+      - "psx-wealth-agent/test_nml_eclear_ingest.py"
       - ".github/workflows/psx-nml-dps-research.yml"
   workflow_dispatch:
 
@@ -17,6 +19,9 @@ jobs:
     name: Verify NML through public PSX DPS
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+      GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
     defaults:
       run:
         working-directory: psx-wealth-agent
@@ -43,8 +48,13 @@ jobs:
         run: |
           mkdir -p data reports
           python psx_dps_feed.py --symbols NML --months 5 --output data
-      - name: Calculate NML technical verdict when valid data exists
-        if: steps.fetch.outcome == 'success'
+      - name: Fallback to owner-provided EClear OHLCV from private Google Drive
+        id: eclear
+        if: steps.fetch.outcome != 'success' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
+        continue-on-error: true
+        run: python nml_eclear_ingest.py --output data
+      - name: Calculate NML technical verdict from whichever price source succeeded
+        if: steps.fetch.outcome == 'success' || steps.eclear.outcome == 'success'
         continue-on-error: true
         run: python agent.py --source csv --symbols NML --data-dir data --output reports
       - name: Render DPS availability, OHLCV and technical result
@@ -69,6 +79,18 @@ jobs:
               "technical_result": None,
               "trading_automation_enabled": False
           }
+          source_file = Path("data/nml_source.json")
+          source_meta = None
+          if source_file.exists():
+              try:
+                  source_meta = json.loads(source_file.read_text())
+                  outcome["data_source"] = source_meta["source"]
+                  outcome["source_verification"] = source_meta["verification"]
+                  outcome["source_warnings"] = source_meta.get("limitations", [])
+                  outcome["available_screenshots"] = source_meta.get("screenshots_available_in_drive")
+                  outcome["status"] = "BROKER_OHLCV_RESEARCH_AVAILABLE"
+              except Exception:
+                  outcome["source_warnings"] = ["Unreadable broker source provenance"]
           errors = Path("data/fetch_errors.json")
           if errors.exists():
               try:
@@ -80,7 +102,8 @@ jobs:
               if len(frame) >= 80:
                   last = frame.iloc[-1]
                   outcome.update({
-                      "status": "DATA_AVAILABLE",
+                      "status": "BROKER_OHLCV_RESEARCH_AVAILABLE" if source_meta
+                                else "DPS_DATA_AVAILABLE",
                       "historical_candles": len(frame),
                       "first_session": str(frame.iloc[0]["date"]),
                       "last_session": str(last["date"]),
@@ -97,6 +120,11 @@ jobs:
                   items = verdict.get("results") or []
                   if items:
                       outcome["technical_result"] = items[0]
+                      if source_meta:
+                          outcome["technical_result"]["data_source"] = source_meta["source"]
+                          outcome["technical_result"]["warnings"].append(
+                              "owner_trusted_broker_screenshot_subset_not_independently_verified")
+                          outcome["technical_result"]["buy_approved"] = False
                   if verdict.get("errors"):
                       outcome["analysis_errors"] = verdict["errors"]
               except Exception:
@@ -107,7 +135,8 @@ jobs:
               "",
               "Status: " + outcome["status"],
               "Valid sessions: " + str(outcome["historical_candles"]),
-              "Data source: unofficial public PSX DPS (no order access)",
+              "Data source: " + outcome["data_source"],
+              "Analysis: read-only, no buy approval",
           ]
           if "last_session" in outcome:
               md += [
@@ -116,13 +145,28 @@ jobs:
                       "last_open", "last_high", "last_low", "last_close", "last_volume"))
               ]
           if outcome.get("fetch_error"):
-              md.append("Fetch error: " + str(outcome["fetch_error"]))
+              md.append("Public DPS feed error: " + str(outcome["fetch_error"]))
+          if outcome.get("source_verification"):
+              md.append("Source validation: " + outcome["source_verification"])
+          if outcome.get("technical_result"):
+              result = outcome["technical_result"]
+              md += [
+                  "", "## Technical verdict from validated EClear candles",
+                  "RSI14: " + str(result.get("rsi14")),
+                  "EMA10 / EMA21: " + str(result.get("ema10")) + " / " + str(result.get("ema21")),
+                  "Supertrend green: " + str(result.get("supertrend_green")),
+                  "Technical score /15: " + str(result.get("technical_component_out_of_15")),
+                  "Setup: " + str(result.get("setup")),
+                  "Mean-reversion: " + str(result.get("mean_reversion_state")),
+              ]
+          for warning in outcome.get("source_warnings", []):
+              md.append("Source note: " + warning)
           md += ["", "No automatic trading, no full fundamental buy approval."]
           (root / "nml-dps-result.md").write_text("\n".join(md) + "\n")
           print("\n".join(md))
-          print("DPS_JSON_RESULT=" + json.dumps(outcome, separators=(',', ':')))
+          print("NML_OHLC_RESULT=" + json.dumps(outcome, separators=(',', ':')))
           PY
-      - name: Upload NML DPS report and research verdict
+      - name: Upload NML DPS or EClear-fallback report and research verdict
         if: always()
         uses: actions/upload-artifact@v4
         with:
