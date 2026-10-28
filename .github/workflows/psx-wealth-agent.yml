@@ -75,6 +75,13 @@ jobs:
         continue-on-error: true
         run: python drive_overlay.py --watchlist watchlist.txt --output data
 
+      # The owner's EClear OHLC History CSV has separate SHA256 audit evidence.
+      # This source is for technical research ONLY; never infer buy approval.
+      - name: Overlay owner-trusted EClear broker history for research
+        if: github.event_name != 'push' && env.PSX_OHLCV_URL_TEMPLATE == '' && env.GDRIVE_FOLDER_ID != '' && env.GDRIVE_SERVICE_ACCOUNT_JSON != ''
+        continue-on-error: true
+        run: python broker_eclear_ingest.py --watchlist watchlist.txt --output data
+
       - name: Preserve history cache, including approved supplementary dates
         if: always() && github.event_name != 'push' && env.CAPITALSTAKE_API_TOKEN == '' && env.PSX_OHLCV_URL_TEMPLATE == ''
         uses: actions/cache/save@v4

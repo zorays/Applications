@@ -392,6 +392,11 @@ def main() -> int:
                 if mode == "auto_verified_independent_psx":
                     result["data_source"] = "OCR independently cross-checked against PSX historical OHLCV"
                     result["independently_matched_rows"] = provenance.get("independently_matched_rows", 0)
+                elif mode == "owner_trusted_eclear_manually_transcribed_provisional":
+                    result["warnings"].append("owner_trusted_eclear_transcription_provisional_not_complete_251_sessions")
+                    if provenance.get("known_source_gaps"):
+                        result["warnings"].append("eclear_history_missing_sessions_require_review")
+                    result["data_source"] = "Owner EClear TradeCast OHLCV screenshot transcription (research-only)"
                 else:
                     result["warnings"].append("screenshot_derived_candles_need_independent_verification")
                     result["data_source"] = "PSX history supplemented with human-reviewed screenshot OCR"
