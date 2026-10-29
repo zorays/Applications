@@ -71,11 +71,13 @@ class AdapterTests(unittest.TestCase):
                     "MEBL", "NETSOL", "OGDC", "SIEM", "SLM", "SRR", "SYS",
                     "TREET", "TRG", "TPLT", "DSIL", "PSO", "PPL", "MLCF",
                     "DGKC", "WASL", "WAVES", "WAVESAPP", "THCCL", "ANL",
-                    "LOTCHEM", "PRL", "TPL"}
+                    "LOTCHEM", "PRL", "TPL", "GTYR", "SEARL", "PTC"}
         self.assertTrue(expected.issubset(set(symbols)))
         self.assertEqual(len(symbols), 40)
         self.assertLessEqual(len(symbols), 40)
-        self.assertLessEqual(len(symbols) * 5, 190)
+        # The incremental daily workflow allows up to 40*5 below its 216-request
+        # ceiling; the standalone all-history probe keeps its stricter budget. 
+        self.assertLessEqual(len(symbols) * 5, 216)
 
     def test_watchlist_empty_rejected(self):
         with TemporaryDirectory() as root:
