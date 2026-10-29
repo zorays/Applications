@@ -21,7 +21,7 @@ from agent import DEFAULT_SYMBOLS, MIN_BARS, normalize
 
 PKT = ZoneInfo("Asia/Karachi")
 NAME = re.compile(r"^[A-Z][A-Z0-9]{1,11}$")
-MAX_WATCHLIST = 37
+MAX_WATCHLIST = 40
 
 
 def read_watchlist(path: str, max_symbols: int = MAX_WATCHLIST) -> list[str]:
