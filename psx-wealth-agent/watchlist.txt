@@ -1,7 +1,7 @@
 # PSX Wealth Creation Agent
 # One PSX ticker per line. Add or remove lines whenever you like.
 # No holdings, quantities, average prices or account information here.
-# Limit: 37 symbols per daily run; the normal research bootstrap is capped separately.
+# Limit: 40 symbols per incremental daily run; the normal research bootstrap is capped separately.
 # Existing equities and closely followed stocks
 
 CEPB
@@ -35,6 +35,7 @@ SPEL
 TPLT
 
 # Imported from EClear Trade Cast 1st and 2nd profiles (Oct 22, 2026)
+
 LOADS
 OBOY
 WASL
@@ -45,8 +46,16 @@ ANL
 LOTCHEM
 
 # Research ideas from Stock Hub screenshot, Oct 23 2026 (NOT buy approvals)
+
 PRL
 TPL
 
 # BNWM OHLCV broker screenshots archived Oct 23 2026; research-only, no automatic buy
+
 BNWM
+
+# Additional research candidates requested Oct 29 2026
+
+GTYR
+SEARL
+PTC
