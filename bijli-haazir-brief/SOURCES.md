@@ -19,6 +19,7 @@
 - [Startup Istanbul shortlisting video](https://www.youtube.com/watch?v=vXMQD3jB5yE)
 - [Bijli Haazir concept video](https://www.youtube.com/watch?v=SwJYzLoVxwo)
 - [Official Startup Istanbul directory](https://startupistanbul.com/startup100/)
+- [[Always Present Charging](https://www.youtube.com/watch?v=pqnaEAVb8Jw&t=23s)]
 - [StartAny profile](https://startany.com/zorays-solar) (link availability unverified)
 - [Gust evaluation](https://gust.com/startup_evaluation)
 - [Gust Launch](https://gust.com/pricing) (a product, not documented pitch event)
